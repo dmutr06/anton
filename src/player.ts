@@ -1,27 +1,42 @@
-import { AudioPlayer, AudioPlayerStatus, createAudioResource, entersState, joinVoiceChannel, VoiceConnection, VoiceConnectionStatus } from "@discordjs/voice";
-import { Track } from "./track";
+import {
+    AudioPlayer,
+    AudioPlayerStatus,
+    createAudioResource,
+    entersState,
+    joinVoiceChannel,
+    VoiceConnection,
+    VoiceConnectionStatus,
+} from "@discordjs/voice";
+import type { Track } from "./track";
 import type { VoiceBasedChannel } from "discord.js";
+import type { Provider } from "./provider";
+
+export type TrackContext = {
+    track: Track;
+    channel: VoiceBasedChannel;
+    provider: Provider;
+};
 
 export class Player {
-    private queue: Track[] = [];
+    private queue: TrackContext[] = [];
     private audioPlayer: AudioPlayer = new AudioPlayer();
     private curChannel: VoiceBasedChannel | null = null;
     private voiceConn: VoiceConnection | null = null;
 
-    constructor() {
+    constructor(public readonly providers: Provider[]) {
         this.audioPlayer.on(AudioPlayerStatus.Idle, () => {
             if (this.queue.length === 0) {
-                this.curChannel = null;
-                this.voiceConn?.destroy();
-                this.voiceConn = null;
-                return;
+                this.disconnect();
             }
             this.next();
         });
     }
 
-    public enqueue(url: string, channel: VoiceBasedChannel) {
-        this.queue.push(new Track(url, channel));
+    public async enqueue(query: string, channel: VoiceBasedChannel) {
+        const provider = this.providers[0]!;
+        const tracks = await provider.search(query);
+
+        this.queue.push({ track: tracks[0]!, channel, provider });
 
         if (!this.voiceConn) {
             this.next();
@@ -32,18 +47,25 @@ export class Player {
         const track = this.queue.shift();
         if (!track) return;
 
-        const stream = track.fetch();
-
         if (!this.voiceConn) {
             await this.connect(track.channel);
         } else if (this.curChannel?.id !== track.channel.id) {
-            this.voiceConn?.destroy();
+            this.disconnect();
             await this.connect(track.channel);
         }
 
-        const resource = createAudioResource(stream);
-        this.voiceConn?.subscribe(this.audioPlayer);
-        this.audioPlayer.play(resource);
+        try {
+            const stream = await track.provider.getStream(track.track);
+            const resource = createAudioResource(stream);
+            this.voiceConn?.subscribe(this.audioPlayer);
+            this.audioPlayer.play(resource);
+        } catch (e) {
+            if (this.queue.length == 0) {
+                this.disconnect();
+            } else {
+                this.next();
+            }
+        }
     }
 
     private async connect(channel: VoiceBasedChannel) {
@@ -66,6 +88,12 @@ export class Player {
 
         this.voiceConn = connection;
         this.curChannel = channel;
+    }
+
+    public async disconnect() {
+        this.curChannel = null;
+        this.voiceConn?.destroy();
+        this.voiceConn = null;
     }
 
     public stop() {

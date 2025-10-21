@@ -24,5 +24,5 @@ export const StopCommand = createCommand(
         player.stop();
 
         await interaction.reply("Stopped");
-    }
+    },
 );

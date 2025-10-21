@@ -25,7 +25,7 @@ export const PlayCommand = createCommand(
 
         const player = playerManager.getOrCreate(interaction.guildId);
         try {
-            player.enqueue(url, interaction.member.voice.channel);
+            await player.enqueue(url, interaction.member.voice.channel);
         } catch (e) {
             if (e instanceof Error) {
                 await interaction.editReply(`Error: ${e.message}`);
@@ -35,5 +35,5 @@ export const PlayCommand = createCommand(
         }
 
         await interaction.editReply("Added to queue");
-    }
+    },
 );

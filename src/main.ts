@@ -10,6 +10,7 @@ import { OptionType, type Command } from "./command";
 import { StopCommand } from "./commands/stop";
 import { PlayCommand } from "./commands/play";
 import { PlayerManager } from "./playerManager";
+import { SoundcloudProvider } from "./providers/soundcloud";
 
 const REFRESH_APPLICATION_COMMANDS = true;
 
@@ -32,24 +33,35 @@ function commandsToApplicationCommandsData(commands: Command[]) {
         return {
             name: cmd.name,
             description: cmd.description,
-            options: opts.length > 0 
-                ? opts.map(([name, opt]) => ({
-                      name,
-                      description: opt.description,
-                      type: optionTypeToDiscordType(opt.type),
-                      required: opt.required ?? false,
-                  }))
-                : [],
-        }
+            options:
+                opts.length > 0
+                    ? opts.map(([name, opt]) => ({
+                          name,
+                          description: opt.description,
+                          type: optionTypeToDiscordType(opt.type),
+                          required: opt.required ?? false,
+                      }))
+                    : [],
+        };
     });
 }
 
-
 async function main() {
     const rest = new REST({ version: "10" }).setToken(process.env.TOKEN!);
-    const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildVoiceStates] });
+    const client = new Client({
+        intents: [
+            GatewayIntentBits.Guilds,
+            GatewayIntentBits.GuildMessages,
+            GatewayIntentBits.GuildVoiceStates,
+        ],
+    });
 
-    const playerManager = new PlayerManager();
+    const soundcloudProvider = new SoundcloudProvider();
+    await soundcloudProvider.loadClientId();
+
+    const providers = [soundcloudProvider];
+
+    const playerManager = new PlayerManager(providers);
 
     const commands: Command[] = [
         new PlayCommand({ playerManager }),
@@ -75,7 +87,8 @@ async function main() {
     });
 
     client.on(Events.InteractionCreate, async (interaction) => {
-        if (!interaction.inCachedGuild() || !interaction.isChatInputCommand()) return;
+        if (!interaction.inCachedGuild() || !interaction.isChatInputCommand())
+            return;
 
         const cmd = commands.find((c) => c.name === interaction.commandName);
         if (!cmd) return;
@@ -87,5 +100,3 @@ async function main() {
 }
 
 main();
-
-
