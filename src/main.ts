@@ -7,6 +7,7 @@ import {
     Routes,
 } from "discord.js";
 import { OptionType, type Command } from "./command";
+import { SkipCommand } from "./commands/skip";
 import { StopCommand } from "./commands/stop";
 import { PlayCommand } from "./commands/play";
 import { PlayerManager } from "./playerManager";
@@ -66,6 +67,7 @@ async function main() {
     const commands: Command[] = [
         new PlayCommand({ playerManager }),
         new StopCommand({ playerManager }),
+        new SkipCommand({ playerManager }),
     ];
 
     client.on(Events.ClientReady, async (client) => {

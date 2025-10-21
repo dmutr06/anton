@@ -4,20 +4,29 @@ import {
     createAudioResource,
     entersState,
     joinVoiceChannel,
-    VoiceConnection,
+    type VoiceConnection,
     VoiceConnectionStatus,
 } from "@discordjs/voice";
 import type { Track } from "./track";
-import type { VoiceBasedChannel } from "discord.js";
+import type { TextBasedChannel, VoiceBasedChannel } from "discord.js";
+import { EmbedBuilder } from "discord.js";
 import type { Provider } from "./provider";
 import { Readable } from "stream";
+import { createNowPlayingEmbed } from "./utils/trackEmbeds";
 
 export type TrackContext = {
     track: Track;
     args?: string;
-    channel: VoiceBasedChannel;
+    voiceChannel: VoiceBasedChannel;
+    textChannel: TextBasedChannel;
     provider: Provider;
 };
+
+function formatDuration(seconds: number): string {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
 
 export class Player {
     private queue: TrackContext[] = [];
@@ -34,46 +43,68 @@ export class Player {
         });
     }
 
-    public async enqueue({ query, args }: { query: string; args?: string }, channel: VoiceBasedChannel) {
+    public async enqueue({
+        query,
+        args,
+        voiceChannel,
+        textChannel,
+    }: {
+        query: string;
+        args?: string;
+        voiceChannel: VoiceBasedChannel;
+        textChannel: TextBasedChannel;
+    }): Promise<Track> {
         const provider = this.providers[0]!;
         const tracks = await provider.search(query);
+        const track = tracks[0]!;
 
-        this.queue.push({ track: tracks[0]!, args, channel, provider });
+        this.queue.push({ track, args, voiceChannel, textChannel, provider });
 
         if (!this.voiceConn) {
             this.next();
         }
+
+        return track;
     }
 
     public async next() {
-        const track = this.queue.shift();
-        if (!track) return;
+        const trackCtx = this.queue.shift();
+        if (!trackCtx) return;
 
         if (!this.voiceConn) {
-            await this.connect(track.channel);
-        } else if (this.curChannel?.id !== track.channel.id) {
+            await this.connect(trackCtx.voiceChannel);
+        } else if (this.curChannel?.id !== trackCtx.voiceChannel.id) {
             this.disconnect();
-            await this.connect(track.channel);
+            await this.connect(trackCtx.voiceChannel);
         }
 
         try {
-            const stream = await track.provider.getStream(track.track);
+            const stream = await trackCtx.provider.getStream(trackCtx.track);
             const ffmpeg = Bun.spawn(
                 [
                     "ffmpeg",
-                    "-i", "pipe:0",
-                    "-f", "opus",
-                    ...(track.args ? ["-af", track.args] : []),
+                    "-i",
+                    "pipe:0",
+                    "-f",
+                    "opus",
+                    ...(trackCtx.args ? ["-af", trackCtx.args] : []),
                     "pipe:1",
                 ],
                 {
-                stdin: stream,
-                stdout: "pipe",
-            });
+                    stdin: stream,
+                    stdout: "pipe",
+                },
+            );
 
             const resource = createAudioResource(Readable.from(ffmpeg.stdout));
             this.voiceConn?.subscribe(this.audioPlayer);
             this.audioPlayer.play(resource);
+
+            if (trackCtx.textChannel.isSendable()) {
+                await trackCtx.textChannel.send({
+                    embeds: [createNowPlayingEmbed(trackCtx.track)],
+                });
+            }
         } catch (e) {
             console.log(e);
             if (this.queue.length == 0) {
@@ -115,5 +146,13 @@ export class Player {
     public stop() {
         this.queue = [];
         this.audioPlayer.stop();
+    }
+
+    public skip(): boolean {
+        if (this.audioPlayer.state.status !== AudioPlayerStatus.Idle) {
+            this.audioPlayer.stop();
+            return true;
+        }
+        return false;
     }
 }

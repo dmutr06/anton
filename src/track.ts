@@ -4,4 +4,5 @@ export type Track = {
     author: string;
     duration: number;
     url?: string;
+    thumbnail?: string;
 };

@@ -1,6 +1,5 @@
 import type { Provider } from "../provider";
 import type { Track } from "../track";
-import { Readable } from "stream";
 
 const API_BASE = "https://api-v2.soundcloud.com";
 
@@ -25,6 +24,7 @@ export class SoundcloudProvider implements Provider {
             author: t.user.username,
             duration: t.duration / 1000,
             url: t.permalink_url,
+            thumbnail: t.artwork_url,
         }));
     }
 
