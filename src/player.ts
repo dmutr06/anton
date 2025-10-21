@@ -14,6 +14,7 @@ import { Readable } from "stream";
 
 export type TrackContext = {
     track: Track;
+    args?: string;
     channel: VoiceBasedChannel;
     provider: Provider;
 };
@@ -33,11 +34,11 @@ export class Player {
         });
     }
 
-    public async enqueue(query: string, channel: VoiceBasedChannel) {
+    public async enqueue({ query, args }: { query: string; args?: string }, channel: VoiceBasedChannel) {
         const provider = this.providers[0]!;
         const tracks = await provider.search(query);
 
-        this.queue.push({ track: tracks[0]!, channel, provider });
+        this.queue.push({ track: tracks[0]!, args, channel, provider });
 
         if (!this.voiceConn) {
             this.next();
@@ -57,14 +58,12 @@ export class Player {
 
         try {
             const stream = await track.provider.getStream(track.track);
-
             const ffmpeg = Bun.spawn(
                 [
                     "ffmpeg",
                     "-i", "pipe:0",
                     "-f", "opus",
-                    "-ar", "48000",
-                    "-ac", "2",
+                    ...(track.args ? ["-af", track.args] : []),
                     "pipe:1",
                 ],
                 {
@@ -76,6 +75,7 @@ export class Player {
             this.voiceConn?.subscribe(this.audioPlayer);
             this.audioPlayer.play(resource);
         } catch (e) {
+            console.log(e);
             if (this.queue.length == 0) {
                 this.disconnect();
             } else {

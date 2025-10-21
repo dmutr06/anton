@@ -9,13 +9,18 @@ export const PlayCommand = createCommand(
     "play",
     "play youtube video",
     {
-        url: {
+        query: {
             type: OptionType.String,
-            description: "video url",
+            description: "query or url",
             required: true,
         },
+        args: {
+            type: OptionType.String,
+            description: "ffmpeg args",
+            required: false,
+        }
     },
-    async (interaction, { url }, { playerManager }: PlayCommandDeps) => {
+    async (interaction, { query, args }, { playerManager }: PlayCommandDeps) => {
         if (!interaction.member.voice.channel) {
             await interaction.reply("Must be in voice channel");
             return;
@@ -25,7 +30,7 @@ export const PlayCommand = createCommand(
 
         const player = playerManager.getOrCreate(interaction.guildId);
         try {
-            await player.enqueue(url, interaction.member.voice.channel);
+            await player.enqueue({ query, args }, interaction.member.voice.channel);
         } catch (e) {
             if (e instanceof Error) {
                 await interaction.editReply(`Error: ${e.message}`);
