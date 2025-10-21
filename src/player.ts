@@ -10,6 +10,7 @@ import {
 import type { Track } from "./track";
 import type { VoiceBasedChannel } from "discord.js";
 import type { Provider } from "./provider";
+import { Readable } from "stream";
 
 export type TrackContext = {
     track: Track;
@@ -56,7 +57,22 @@ export class Player {
 
         try {
             const stream = await track.provider.getStream(track.track);
-            const resource = createAudioResource(stream);
+
+            const ffmpeg = Bun.spawn(
+                [
+                    "ffmpeg",
+                    "-i", "pipe:0",
+                    "-f", "opus",
+                    "-ar", "48000",
+                    "-ac", "2",
+                    "pipe:1",
+                ],
+                {
+                stdin: stream,
+                stdout: "pipe",
+            });
+
+            const resource = createAudioResource(Readable.from(ffmpeg.stdout));
             this.voiceConn?.subscribe(this.audioPlayer);
             this.audioPlayer.play(resource);
         } catch (e) {

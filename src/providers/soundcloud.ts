@@ -53,7 +53,7 @@ export class SoundcloudProvider implements Provider {
         return mp3;
     }
 
-    public async getStream(track: Track): Promise<Readable> {
+    public async getStream(track: Track): Promise<ReadableStream> {
         const streamUrl = await this.getStreamUrl(track);
 
         const stream = await fetch(streamUrl);
@@ -62,6 +62,6 @@ export class SoundcloudProvider implements Provider {
             throw new Error("Could not fetch a stream");
         }
 
-        return Readable.from(stream.body);
+        return stream.body;
     }
 }
