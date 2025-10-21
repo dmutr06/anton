@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "bun run --watch --hot ./src/main.ts",
     "fmt": "biome format --write ./src",
-    "lint": "biome lint --write ./src"
+    "lint": "biome lint --write ./src",
+    "build": "bun build --compile --target=bun-linux-x64 src/main.ts --outfile ./build/main"
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.6",
@@ -21,6 +22,7 @@
     "@snazzah/davey": "^0.1.7",
     "bufferutil": "^4.0.9",
     "discord.js": "^14.23.2",
+    "ffmpeg-static": "^5.2.0",
     "glob": "^11.0.3",
     "zlib-sync": "^0.1.10",
     "zod": "^4.1.12"
