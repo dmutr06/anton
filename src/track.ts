@@ -3,6 +3,6 @@ export type Track = {
     title: string;
     author: string;
     duration: number;
-    url?: string;
+    url: string;
     thumbnail?: string;
 };

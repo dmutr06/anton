@@ -9,7 +9,6 @@ import {
 } from "@discordjs/voice";
 import type { Track } from "./track";
 import type { TextBasedChannel, VoiceBasedChannel } from "discord.js";
-import { EmbedBuilder } from "discord.js";
 import type { Provider } from "./provider";
 import { Readable } from "stream";
 import { createNowPlayingEmbed } from "./utils/trackEmbeds";
@@ -21,12 +20,6 @@ export type TrackContext = {
     textChannel: TextBasedChannel;
     provider: Provider;
 };
-
-function formatDuration(seconds: number): string {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-}
 
 export class Player {
     private queue: TrackContext[] = [];
@@ -55,10 +48,19 @@ export class Player {
         textChannel: TextBasedChannel;
     }): Promise<Track> {
         const provider = this.providers[0]!;
-        const tracks = await provider.search(query);
-        const track = tracks[0]!;
+        let track = await provider.resolveTrack(query);
+        if (track) {
+            this.queue.push({ track, args, voiceChannel, textChannel, provider });
+        } else {
+            const tracks = await provider.search(query);
+            if (tracks.length == 0) {
+                throw new Error("No tracks were found");
+            }
 
-        this.queue.push({ track, args, voiceChannel, textChannel, provider });
+            track = tracks[0]!;
+            this.queue.push({ track, args, voiceChannel, textChannel, provider });
+        }
+
 
         if (!this.voiceConn) {
             this.next();
@@ -106,7 +108,7 @@ export class Player {
                 });
             }
         } catch (e) {
-            console.log(e);
+            console.error(e);
             if (this.queue.length == 0) {
                 this.disconnect();
             } else {

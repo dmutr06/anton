@@ -1,4 +1,7 @@
-import type { ChatInputCommandInteraction } from "discord.js";
+import type {
+    AutocompleteInteraction,
+    ChatInputCommandInteraction,
+} from "discord.js";
 import { z } from "zod";
 
 export enum OptionType {
@@ -25,6 +28,7 @@ export type OptionValueMap<T extends OptionType = OptionType> =
 export type BaseOption<T extends OptionType> = {
     description: string;
     type: T;
+    autocomplete?: boolean;
 };
 
 export type RequiredOption<T extends OptionType> = BaseOption<T> & {
@@ -56,6 +60,9 @@ export interface Command<
         interaction: ChatInputCommandInteraction<"cached">,
         opts?: OptionsValues<Options>,
     ): Awaited<unknown>;
+    autocomplete?(
+        interaction: AutocompleteInteraction<"cached">,
+    ): Awaited<unknown>;
 }
 
 export function createCommand<
@@ -68,6 +75,10 @@ export function createCommand<
     handle: (
         interaction: ChatInputCommandInteraction<"cached">,
         opts: OptionsValues<Options>,
+        deps: Deps,
+    ) => Awaited<unknown>,
+    autocomplete?: (
+        interaction: AutocompleteInteraction<"cached">,
         deps: Deps,
     ) => Awaited<unknown>,
 ) {
@@ -103,8 +114,11 @@ export function createCommand<
         readonly options = options;
         private deps: Deps;
 
+        autocomplete?: (interaction: AutocompleteInteraction<"cached">) => Awaited<unknown>;
+
         constructor(...args: keyof Deps extends never ? [] : [Deps]) {
             this.deps = (args[0] ?? {}) as Deps;
+            this.autocomplete = autocomplete ? (interaction: AutocompleteInteraction<"cached">) => autocomplete(interaction, this.deps) : undefined;
         }
 
         parse(input: unknown) {

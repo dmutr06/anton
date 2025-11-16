@@ -1,6 +1,5 @@
 import { createCommand, OptionType } from "../command";
 import type { PlayerManager } from "../playerManager";
-import { EmbedBuilder } from "discord.js";
 import { createAddedToQueueEmbed } from "../utils/trackEmbeds";
 
 export type PlayCommandDeps = {
@@ -21,6 +20,7 @@ export const PlayCommand = createCommand(
             type: OptionType.String,
             description: "query or url",
             required: true,
+            autocomplete: true,
         },
         args: {
             type: OptionType.String,
@@ -64,4 +64,32 @@ export const PlayCommand = createCommand(
             }
         }
     },
+    async (interaction, { playerManager }) => {
+        const focused = interaction.options.getFocused(true);
+
+        console.log(focused);
+
+        if (focused.name !== "query") return;
+
+        const query = focused.value.trim();
+
+        if (!query) {
+            await interaction.respond([]);
+            return;
+        };
+
+        const player = playerManager.getOrCreate(interaction.guildId);
+        const provider = player.providers[0]!;
+
+        try {
+            const result = await provider.search(query);
+            const suggestions = result.slice(0, 5).map((t) => ({
+                name: `${t.author} - ${t.title} (${formatDuration(t.duration)})`,
+                value: t.id,
+            }));
+            await interaction.respond(suggestions);
+        } catch (e) {
+            await interaction.respond([]);
+        }
+    }
 );

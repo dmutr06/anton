@@ -30,6 +30,7 @@ export function optionTypeToDiscordType(
 
 function commandsToApplicationCommandsData(commands: Command[]) {
     return commands.map((cmd) => {
+        console.log(cmd.autocomplete);
         const opts = Object.entries(cmd.options);
         return {
             name: cmd.name,
@@ -41,6 +42,7 @@ function commandsToApplicationCommandsData(commands: Command[]) {
                           description: opt.description,
                           type: optionTypeToDiscordType(opt.type),
                           required: opt.required ?? false,
+                          autocomplete: opt.autocomplete ?? false,
                       }))
                     : [],
         };
@@ -89,13 +91,22 @@ async function main() {
     });
 
     client.on(Events.InteractionCreate, async (interaction) => {
-        if (!interaction.inCachedGuild() || !interaction.isChatInputCommand())
+        if (!interaction.inCachedGuild())
             return;
+
+        if (!interaction.isChatInputCommand() && !interaction.isAutocomplete()) {
+            return;
+        }
 
         const cmd = commands.find((c) => c.name === interaction.commandName);
         if (!cmd) return;
 
-        await cmd.run(interaction);
+        if (interaction.isChatInputCommand()) {
+            await cmd.run(interaction);
+        } else {
+            await cmd.autocomplete?.(interaction);
+        }
+
     });
 
     client.login(process.env.TOKEN!);
