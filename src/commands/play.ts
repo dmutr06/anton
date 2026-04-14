@@ -57,6 +57,7 @@ export const PlayCommand = createCommand(
                 embeds: [createAddedToQueueEmbed(track)],
             });
         } catch (e) {
+            console.log("Error", e);
             if (e instanceof Error) {
                 await interaction.editReply(`Error: ${e.message}`);
             } else {

@@ -4,17 +4,18 @@ import {
     createAudioResource,
     entersState,
     joinVoiceChannel,
+    StreamType,
     type VoiceConnection,
     VoiceConnectionStatus,
 } from "@discordjs/voice";
-import type { Track } from "./track";
+import type { PlayableTrack, Track } from "./track";
 import type { TextBasedChannel, VoiceBasedChannel } from "discord.js";
 import type { Provider } from "./provider";
 import { Readable } from "stream";
 import { createNowPlayingEmbed } from "./utils/trackEmbeds";
 
 export type TrackContext = {
-    track: Track;
+    track: PlayableTrack;
     args?: string;
     voiceChannel: VoiceBasedChannel;
     textChannel: TextBasedChannel;
@@ -48,16 +49,29 @@ export class Player {
         textChannel: TextBasedChannel;
     }): Promise<Track> {
         const provider = this.providers[0]!;
-        let track = await provider.resolveTrack(query);
+        let track: PlayableTrack | null = null;
+        let matchedProvider: Provider = provider;
+
+        for (const p of this.providers) {
+            track = await p.resolveTrack(query);
+            if (track) {
+                matchedProvider = p;
+                break;
+            }
+        }
+
         if (track) {
-            this.queue.push({ track, args, voiceChannel, textChannel, provider });
+            this.queue.push({ track, args, voiceChannel, textChannel, provider: matchedProvider });
         } else {
             const tracks = await provider.search(query);
             if (tracks.length == 0) {
                 throw new Error("No tracks were found");
             }
 
-            track = tracks[0]!;
+            track = await provider.resolveTrack(tracks[0]!.id);
+            if (!track) {
+                throw new Error("Failed to resolve track");
+            }
             this.queue.push({ track, args, voiceChannel, textChannel, provider });
         }
 
@@ -87,9 +101,9 @@ export class Player {
                     "ffmpeg",
                     "-i",
                     "pipe:0",
+                    ...(trackCtx.args ? ["-af", trackCtx.args] : []),
                     "-f",
                     "opus",
-                    ...(trackCtx.args ? ["-af", trackCtx.args] : []),
                     "pipe:1",
                 ],
                 {
@@ -98,7 +112,9 @@ export class Player {
                 },
             );
 
-            const resource = createAudioResource(Readable.from(ffmpeg.stdout));
+            const resource = createAudioResource(Readable.from(ffmpeg.stdout), {
+                inputType: StreamType.OggOpus,
+            });
             this.voiceConn?.subscribe(this.audioPlayer);
             this.audioPlayer.play(resource);
 
@@ -131,7 +147,7 @@ export class Player {
         } catch {
             try {
                 connection.destroy();
-            } catch {}
+            } catch { }
             throw new Error("Failed to join voice channel");
         }
 

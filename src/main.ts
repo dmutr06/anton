@@ -12,8 +12,9 @@ import { StopCommand } from "./commands/stop";
 import { PlayCommand } from "./commands/play";
 import { PlayerManager } from "./playerManager";
 import { SoundcloudProvider } from "./providers/soundcloud";
+import { YtdlpProvider } from "./providers/ytdlp";
 
-const REFRESH_APPLICATION_COMMANDS = true;
+const REFRESH_APPLICATION_COMMANDS = false;
 
 export function optionTypeToDiscordType(
     type: OptionType,
@@ -30,7 +31,7 @@ export function optionTypeToDiscordType(
 
 function commandsToApplicationCommandsData(commands: Command[]) {
     return commands.map((cmd) => {
-        console.log(cmd.autocomplete);
+        console.debug(`${cmd.name}: ${cmd.autocomplete}`);
         const opts = Object.entries(cmd.options);
         return {
             name: cmd.name,
@@ -38,12 +39,12 @@ function commandsToApplicationCommandsData(commands: Command[]) {
             options:
                 opts.length > 0
                     ? opts.map(([name, opt]) => ({
-                          name,
-                          description: opt.description,
-                          type: optionTypeToDiscordType(opt.type),
-                          required: opt.required ?? false,
-                          autocomplete: opt.autocomplete ?? false,
-                      }))
+                        name,
+                        description: opt.description,
+                        type: optionTypeToDiscordType(opt.type),
+                        required: opt.required ?? false,
+                        autocomplete: !!opt.autocomplete,
+                    }))
                     : [],
         };
     });
@@ -62,7 +63,9 @@ async function main() {
     const soundcloudProvider = new SoundcloudProvider();
     await soundcloudProvider.loadClientId();
 
-    const providers = [soundcloudProvider];
+    const ytdlpProvider = new YtdlpProvider();
+
+    const providers = [soundcloudProvider, ytdlpProvider];
 
     const playerManager = new PlayerManager(providers);
 

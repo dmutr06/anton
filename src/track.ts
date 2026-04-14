@@ -6,3 +6,7 @@ export type Track = {
     url: string;
     thumbnail?: string;
 };
+
+export type PlayableTrack = Track & {
+    streamUrl: string;
+};
