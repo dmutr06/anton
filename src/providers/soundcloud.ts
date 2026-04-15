@@ -1,19 +1,37 @@
-import type { Provider } from "../provider";
-import type { PlayableTrack, Track } from "../track";
+import type { SearchableProvider, TrendingProvider } from "../provider";
+import type { Track } from "../track";
 
 const API_BASE = "https://api-v2.soundcloud.com";
 
-export class SoundcloudProvider implements Provider {
+export type SoundcloudTrack = Track & {
+    provider: "soundcloud";
+    progressiveUrl: string;
+}
+
+export class SoundcloudProvider implements SearchableProvider<SoundcloudTrack>, TrendingProvider<SoundcloudTrack> {
+    readonly providerId = "soundcloud";
+    readonly urlRegex = /^(?:https?:\/\/)?(?:m\.|www\.)?soundcloud\.com\/([a-zA-Z0-9-_]+)\/([a-zA-Z0-9-_]+)/i;
+    readonly idRegex = /^\d+$/;
     private clientId: string | undefined;
 
-    public async loadClientId() {
-        // TODO: probably do it dynamically
-        this.clientId = process.env.SOUNDCLOUD_CLIENT_ID;
+    constructor(clientId?: string) {
+        this.clientId = clientId ?? process.env.SOUNDCLOUD_CLIENT_ID;
     }
 
-    public async search(query: string): Promise<Track[]> {
+    public urlMatches(url: string): boolean {
+        return this.urlRegex.test(url);
+    }
+
+    public idMatches(id: string): boolean {
+        return this.idRegex.test(id);
+    }
+
+    public async search(query: string, signal?: AbortSignal): Promise<SoundcloudTrack[]> {
         const res = await fetch(
-            `${API_BASE}/search/tracks?q=${encodeURIComponent(query)}&client_id=${this.clientId}`,
+            `${API_BASE}/search/tracks?q=${encodeURIComponent(query)}&limit=20&client_id=${this.clientId}`,
+            {
+                signal,
+            },
         );
 
         const data = (await res.json()) as any;
@@ -21,56 +39,64 @@ export class SoundcloudProvider implements Provider {
         return data.collection.map((t: any) => this.mapToTrack(t));
     }
 
-    public async resolveTrack(query: string): Promise<PlayableTrack | null> {
-        if (!this.clientId) throw new Error("Get client id first");
-
-        let t: any;
-
-        if (this.isSoundcloudUrl(query)) {
-            const res = await fetch(
-                `${API_BASE}/resolve?url=${encodeURIComponent(query)}&client_id=${this.clientId}`,
-            );
-            if (res.ok) t = await res.json();
-        } else {
-            if (this.isNumericId(query)) {
-                const res = await fetch(
-                    `${API_BASE}/tracks/${encodeURIComponent(query)}?client_id=${this.clientId}`,
-                );
-                if (res.ok) t = await res.json();
-            }
-
-            if (!t) {
-                const res = await fetch(
-                    `${API_BASE}/search/tracks?q=${encodeURIComponent(query)}&client_id=${this.clientId}`,
-                );
-                if (res.ok) {
-                    const data = await res.json() as any;
-                    t = data.collection?.[0];
-                }
-            }
-        }
-
-        if (!t) {
-            return null;
-        }
-
-        const progressive = t?.media?.transcodings?.find?.(
-            (t: any) => t?.format?.protocol === "progressive",
-        );
-        if (!t || !t.id || !progressive || !progressive.url) return null;
-
-        const streamRes = await fetch(
-            `${progressive.url}?client_id=${this.clientId}`,
+    // TODO: trash, rewrite it later
+    public async getTrending(signal?: AbortSignal): Promise<SoundcloudTrack[]> {
+        const res = await fetch(
+            `${API_BASE}/charts/selections?client_id=${this.clientId}`,
+            {
+                signal,
+            },
         );
 
-        const { url: streamUrl } = (await streamRes.json()) as any;
-        if (!streamUrl) return null;
+        const data = (await res.json()) as any;
 
-        return { ...this.mapToTrack(t), streamUrl };
+        const playlistId = data.collection?.[0]?.items?.collection?.[0]?.id;
+
+        const playlistRes = await fetch(`${API_BASE}/playlists/${playlistId}?client_id=${this.clientId}`);
+
+        const playlist = await (playlistRes.json()) as any;
+
+        const ids = playlist.tracks.map((track: any) => track.id as string);
+
+        return this.resolveIds(ids, signal);
     }
 
-    public async getStream(track: PlayableTrack): Promise<ReadableStream> {
-        const stream = await fetch(track.streamUrl);
+    public async resolveUrl(url: string, signal?: AbortSignal): Promise<SoundcloudTrack | null> {
+        if (!this.urlMatches(url)) return null;
+
+        const res = await fetch(
+            `${API_BASE}/resolve?url=${encodeURIComponent(url)}&client_id=${this.clientId}`,
+            {
+                signal,
+            }
+        );
+
+        const t = await res.json();
+
+        return this.mapToTrack(t);
+    }
+
+    public async resolveId(id: string, signal?: AbortSignal): Promise<SoundcloudTrack | null> {
+        if (!this.idMatches(id)) return null;
+
+        const res = await fetch(
+            `${API_BASE}/tracks/${encodeURIComponent(id)}?client_id=${this.clientId}`,
+            {
+                signal,
+            }
+        );
+
+        const t = await res.json();
+
+        return this.mapToTrack(t);
+    }
+
+    public async getStream(track: SoundcloudTrack): Promise<ReadableStream> {
+        const streamRes = await fetch(`${track.progressiveUrl}?client_id=${this.clientId}`);
+
+        const { url: streamUrl } = (await streamRes.json()) as any;
+
+        const stream = await fetch(streamUrl);
 
         if (!stream.ok || !stream.body) {
             throw new Error("Could not fetch a stream");
@@ -79,7 +105,26 @@ export class SoundcloudProvider implements Provider {
         return stream.body;
     }
 
-    private mapToTrack(t: any): Track {
+    private async resolveIds(ids: string[], signal?: AbortSignal): Promise<SoundcloudTrack[]> {
+        const res = await fetch(
+            `${API_BASE}/tracks?ids=${ids.join(",")}&client_id=${this.clientId}`,
+            {
+                signal,
+            }
+        );
+
+        const data = (await res.json()) as any;
+
+        return data.map(this.mapToTrack);
+    }
+
+    private mapToTrack(t: any): SoundcloudTrack | null {
+        const progressive = t?.media?.transcodings?.find?.(
+            (t: any) => t?.format?.protocol === "progressive",
+        );
+
+        if (!t || !t.id || !progressive || !progressive.url || t.policy != "ALLOW") return null;
+
         return {
             id: t.id.toString(),
             title: t.title,
@@ -87,14 +132,8 @@ export class SoundcloudProvider implements Provider {
             duration: t.duration / 1000,
             url: t.permalink_url,
             thumbnail: t.artwork_url ?? t.user?.avatar_url ?? null,
+            progressiveUrl: progressive.url,
+            provider: "soundcloud",
         };
-    }
-
-    private isSoundcloudUrl(query: string): boolean {
-        return query.startsWith("http") && query.includes("soundcloud.com");
-    }
-
-    private isNumericId(query: string): boolean {
-        return /^\d+$/.test(query);
     }
 }

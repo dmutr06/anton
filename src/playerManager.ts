@@ -1,16 +1,15 @@
-import type { Provider } from "./provider";
 import { Player } from "./player";
 
 export class PlayerManager {
     private players = new Map<string, Player>();
 
-    constructor(public readonly providers: Provider[]) {}
+    constructor() {}
 
     public getOrCreate(guildId: string) {
         let player = this.players.get(guildId);
         if (player) return player;
 
-        player = new Player(this.providers);
+        player = new Player();
         this.players.set(guildId, player);
 
         return player;

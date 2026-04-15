@@ -5,8 +5,5 @@ export type Track = {
     duration: number;
     url: string;
     thumbnail?: string;
-};
-
-export type PlayableTrack = Track & {
-    streamUrl: string;
+    provider: string;
 };

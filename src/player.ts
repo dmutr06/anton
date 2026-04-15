@@ -8,18 +8,17 @@ import {
     type VoiceConnection,
     VoiceConnectionStatus,
 } from "@discordjs/voice";
-import type { PlayableTrack, Track } from "./track";
+import type { Track } from "./track";
 import type { TextBasedChannel, VoiceBasedChannel } from "discord.js";
-import type { Provider } from "./provider";
 import { Readable } from "stream";
 import { createNowPlayingEmbed } from "./utils/trackEmbeds";
 
 export type TrackContext = {
-    track: PlayableTrack;
+    track: Track;
+    getStream: () => Promise<ReadableStream>;
     args?: string;
     voiceChannel: VoiceBasedChannel;
     textChannel: TextBasedChannel;
-    provider: Provider;
 };
 
 export class Player {
@@ -28,7 +27,7 @@ export class Player {
     private curChannel: VoiceBasedChannel | null = null;
     private voiceConn: VoiceConnection | null = null;
 
-    constructor(public readonly providers: Provider[]) {
+    constructor() {
         this.audioPlayer.on(AudioPlayerStatus.Idle, () => {
             if (this.queue.length === 0) {
                 this.disconnect();
@@ -37,50 +36,12 @@ export class Player {
         });
     }
 
-    public async enqueue({
-        query,
-        args,
-        voiceChannel,
-        textChannel,
-    }: {
-        query: string;
-        args?: string;
-        voiceChannel: VoiceBasedChannel;
-        textChannel: TextBasedChannel;
-    }): Promise<Track> {
-        const provider = this.providers[0]!;
-        let track: PlayableTrack | null = null;
-        let matchedProvider: Provider = provider;
-
-        for (const p of this.providers) {
-            track = await p.resolveTrack(query);
-            if (track) {
-                matchedProvider = p;
-                break;
-            }
-        }
-
-        if (track) {
-            this.queue.push({ track, args, voiceChannel, textChannel, provider: matchedProvider });
-        } else {
-            const tracks = await provider.search(query);
-            if (tracks.length == 0) {
-                throw new Error("No tracks were found");
-            }
-
-            track = await provider.resolveTrack(tracks[0]!.id);
-            if (!track) {
-                throw new Error("Failed to resolve track");
-            }
-            this.queue.push({ track, args, voiceChannel, textChannel, provider });
-        }
-
+    public async enqueue(trackCtx: TrackContext) {
+        this.queue.push(trackCtx);
 
         if (!this.voiceConn) {
             this.next();
         }
-
-        return track;
     }
 
     public async next() {
@@ -95,7 +56,7 @@ export class Player {
         }
 
         try {
-            const stream = await trackCtx.provider.getStream(trackCtx.track);
+            const stream = await trackCtx.getStream();
             const ffmpeg = Bun.spawn(
                 [
                     "ffmpeg",
@@ -109,6 +70,7 @@ export class Player {
                 {
                     stdin: stream,
                     stdout: "pipe",
+                    stderr: null,
                 },
             );
 

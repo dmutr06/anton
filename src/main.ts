@@ -61,16 +61,12 @@ async function main() {
     });
 
     const soundcloudProvider = new SoundcloudProvider();
-    await soundcloudProvider.loadClientId();
-
     const ytdlpProvider = new YtdlpProvider();
 
-    const providers = [soundcloudProvider, ytdlpProvider];
-
-    const playerManager = new PlayerManager(providers);
+    const playerManager = new PlayerManager();
 
     const commands: Command[] = [
-        new PlayCommand({ playerManager }),
+        new PlayCommand({ playerManager, providers: [soundcloudProvider, ytdlpProvider], defaultProvider: soundcloudProvider }),
         new StopCommand({ playerManager }),
         new SkipCommand({ playerManager }),
     ];

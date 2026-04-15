@@ -1,103 +1,67 @@
+import { spawn } from "bun";
 import type { Provider } from "../provider";
-import type { PlayableTrack, Track } from "../track";
+import type { Track } from "../track";
 
-export class YtdlpProvider implements Provider {
-    public async search(query: string): Promise<Track[]> {
-        const proc = Bun.spawn(
-            [
-                "yt-dlp",
-                `ytsearch5:${query}`,
-                "--dump-json",
-                "--flat-playlist",
-                "--no-download",
-                "--no-warnings",
-                "--no-check-certificates",
-            ],
-            { stdout: "pipe", stderr: "pipe" },
-        );
+export type YtdlpTrack = Track & {
+    provider: "ytdlp";
+};
 
-        const output = await new Response(proc.stdout).text();
-        await proc.exited;
+export class YtdlpProvider implements Provider<YtdlpTrack> {
+    readonly providerId = "ytdlp";
+    readonly urlRegex = /^https?:\/\/(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\//i;
 
-        if (proc.exitCode !== 0) {
-            return [];
-        }
-
-        const tracks: Track[] = [];
-        for (const line of output.split("\n")) {
-            if (!line.trim()) continue;
-
-            try {
-                const info = JSON.parse(line);
-                tracks.push(this.mapToTrack(info));
-            } catch {
-                continue;
-            }
-        }
-
-        return tracks;
+    public urlMatches(url: string): boolean {
+        return this.urlRegex.test(url);
     }
 
-    public async resolveTrack(query: string): Promise<PlayableTrack | null> {
-        const proc = Bun.spawn(
-            [
-                "yt-dlp",
-                query,
-                "--dump-json",
-                "--no-download",
-                "--no-warnings",
-                "--no-check-certificates",
-                "--no-playlist",
-            ],
-            { stdout: "pipe", stderr: "pipe" },
-        );
+    // TODO
+    public idMatches(id: string): boolean {
+        return false;
+    }
 
-        const output = await new Response(proc.stdout).text();
-        await proc.exited;
-
-        if (proc.exitCode !== 0) {
-            return null;
-        }
+    public async resolveUrl(url: string, signal?: AbortSignal): Promise<YtdlpTrack | null> {
+        if (!this.urlMatches(url)) return null;
 
         try {
-            const info = JSON.parse(output.trim());
-            const streamUrl = info.webpage_url ?? info.url ?? query;
-            return { ...this.mapToTrack(info), streamUrl };
-        } catch {
+            const proc = spawn(
+                ["yt-dlp", "-J", "--no-warnings", "--no-playlist", url],
+                { stderr: null, signal }
+            );
+
+            const output = await new Response(proc.stdout).text();
+            if (!output) return null;
+
+            const data = JSON.parse(output);
+
+            return {
+                id: data.id || crypto.randomUUID(),
+                title: data.title ?? "Unknown Video",
+                author: data.uploader ?? data.creator ?? data.channel ?? "Unknown",
+                duration: data.duration ?? 0,
+                url: data.webpage_url ?? url,
+                thumbnail: data.thumbnail ?? null,
+                provider: "ytdlp",
+            };
+        } catch (e) {
             return null;
         }
     }
 
-    public async getStream(track: PlayableTrack): Promise<ReadableStream> {
-        const proc = Bun.spawn(
-            [
-                "yt-dlp",
-                "-f",
-                "bestaudio",
-                "-o",
-                "-",
-                "--no-warnings",
-                "--no-check-certificates",
-                "--no-playlist",
-                track.streamUrl,
-            ],
-            { stdout: "pipe", stderr: "pipe" },
-        );
-
-        return proc.stdout as ReadableStream;
+    // TODO
+    public async resolveId(_id: string, _signal?: AbortSignal): Promise<YtdlpTrack | null> {
+        return null;
     }
 
-    private mapToTrack(info: any): Track {
-        return {
-            id: info.id ?? info.url ?? "",
-            title: info.title ?? "Unknown",
-            author: info.uploader ?? info.channel ?? "Unknown",
-            duration: info.duration ?? 0,
-            url: info.webpage_url ?? info.url ?? "",
-            thumbnail:
-                info.thumbnail ??
-                info.thumbnails?.at(-1)?.url ??
-                undefined,
-        };
+    public async getStream(track: YtdlpTrack, signal?: AbortSignal): Promise<ReadableStream> {
+        const proc = spawn(
+            ["yt-dlp", "-o", "-", "-q", "-f", "ba/b", "--no-warnings", "--no-playlist", track.url],
+            {
+                signal,
+                stdout: "pipe",
+                stderr: null,
+            }
+        );
+
+        return proc.stdout;
     }
 }
