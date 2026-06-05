@@ -19,7 +19,7 @@
   "dependencies": {
     "@discordjs/opus": "^0.10.0",
     "@discordjs/voice": "^0.19.2",
-    "discord.js": "^14.26.2",
-    "zod": "^4.3.6"
+    "discord.js": "^14.26.4",
+    "zod": "^4.4.3"
   }
 }

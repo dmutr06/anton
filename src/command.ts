@@ -114,11 +114,16 @@ export function createCommand<
         readonly options = options;
         private deps: Deps;
 
-        autocomplete?: (interaction: AutocompleteInteraction<"cached">) => Awaited<unknown>;
+        autocomplete?: (
+            interaction: AutocompleteInteraction<"cached">,
+        ) => Awaited<unknown>;
 
         constructor(...args: keyof Deps extends never ? [] : [Deps]) {
             this.deps = (args[0] ?? {}) as Deps;
-            this.autocomplete = autocomplete ? (interaction: AutocompleteInteraction<"cached">) => autocomplete(interaction, this.deps) : undefined;
+            this.autocomplete = autocomplete
+                ? (interaction: AutocompleteInteraction<"cached">) =>
+                      autocomplete(interaction, this.deps)
+                : undefined;
         }
 
         parse(input: unknown) {

@@ -1,8 +1,16 @@
-import type { Provider, SearchableProvider, TrendingProvider } from "../provider";
+import type {
+    Provider,
+    SearchableProvider,
+    TrendingProvider,
+} from "../provider";
 import { createCommand, OptionType } from "../command";
 import type { PlayerManager } from "../playerManager";
-import { createAddedToQueueEmbed } from "../utils/trackEmbeds";
-import type { Track } from "../track";
+import {
+    createAddedToQueueEmbed,
+    createErrorEmbed,
+    createAddedPlaylistToQueueEmbed,
+} from "../utils/trackEmbeds";
+import type { Track, Playlist } from "../track";
 
 export type PlayCommandDeps = {
     playerManager: PlayerManager;
@@ -53,41 +61,71 @@ export const PlayCommand = createCommand(
         const player = playerManager.getOrCreate(interaction.guildId);
 
         const query = rawQuery.trim();
-        let track: Track | null = null;
+        let resolved: Track | Playlist | null = null;
         let chosenProvider: Provider = defaultProvider;
 
-        for (const provider of providers) {
-            if (provider.urlMatches(query)) {
-                track = await provider.resolveUrl(query);
-                chosenProvider = provider;
-                break;
+        try {
+            for (const provider of providers) {
+                if (provider.matchUrl(query)) {
+                    resolved = await provider.resolveUrl(query);
+                    chosenProvider = provider;
+                    break;
+                }
             }
-        }
 
-        if (!track && defaultProvider.idMatches(query)) {
-            track = await defaultProvider.resolveId(query);
-        }
+            if (!resolved && defaultProvider.matchId(query)) {
+                resolved = await defaultProvider.resolveId(query);
+            }
 
-        if (!track) {
-            track = (await defaultProvider.search(query))[0] || null;
-        }
-
-        if (!track) {
-            await interaction.reply("Could not find a track...");
+            if (!resolved) {
+                resolved = (await defaultProvider.search(query))[0] || null;
+            }
+        } catch (error) {
+            console.error("Error resolving track/playlist:", error);
+            await interaction.editReply({
+                embeds: [
+                    createErrorEmbed(
+                        "Something went wrong while resolving the track.",
+                    ),
+                ],
+            });
             return;
         }
 
-        player.enqueue({
-            track,
-            args,
-            voiceChannel: interaction.member.voice.channel,
-            textChannel: interaction.channel,
-            getStream: () => chosenProvider.getStream(track),
-        });
+        if (!resolved) {
+            await interaction.editReply({
+                embeds: [createErrorEmbed("Could not find a track...")],
+            });
+            return;
+        }
 
-        await interaction.editReply({
-            embeds: [createAddedToQueueEmbed(track)],
-        });
+        if ("tracks" in resolved) {
+            for (const track of resolved.tracks) {
+                player.enqueue({
+                    track,
+                    args,
+                    voiceChannel: interaction.member.voice.channel,
+                    textChannel: interaction.channel,
+                    getStream: () => chosenProvider.getStream(track),
+                });
+            }
+
+            await interaction.editReply({
+                embeds: [createAddedPlaylistToQueueEmbed(resolved)],
+            });
+        } else {
+            player.enqueue({
+                track: resolved,
+                args,
+                voiceChannel: interaction.member.voice.channel,
+                textChannel: interaction.channel,
+                getStream: () => chosenProvider.getStream(resolved),
+            });
+
+            await interaction.editReply({
+                embeds: [createAddedToQueueEmbed(resolved)],
+            });
+        }
     },
     async (interaction, { defaultProvider, providers }) => {
         const focused = interaction.options.getFocused(true);
@@ -95,7 +133,6 @@ export const PlayCommand = createCommand(
         if (focused.name !== "query") return;
 
         const query = focused.value.trim();
-
 
         const userId = interaction.user.id;
 
@@ -113,24 +150,35 @@ export const PlayCommand = createCommand(
             if (!query) {
                 const result = await defaultProvider.getTrending(signals);
 
-                const suggestions = result.filter(Boolean).slice(0, 10).map((t) => ({
-                    name: `${t.author} - ${t.title} (${formatDuration(t.duration)})`.slice(0, 100),
-                    value: t.id,
-                }));
+                const suggestions = result
+                    .filter(Boolean)
+                    .slice(0, 20)
+                    .map((t) => ({
+                        name: `${t.author} - ${t.title} (${formatDuration(t.duration)})`.slice(
+                            0,
+                            100,
+                        ),
+                        value: t.id,
+                    }));
 
                 await interaction.respond(suggestions);
                 return;
-            };
+            }
 
             for (const provider of providers) {
-                if (!provider.urlMatches(query)) continue
+                if (!provider.matchUrl(query)) continue;
 
-                const track = await provider.resolveUrl(query, signals);
-                if (!track) break;
+                const resolved = await provider.resolveUrl(query, signals);
+                if (!resolved) break;
+
+                const suggestionName =
+                    "tracks" in resolved
+                        ? `${resolved.author} - ${resolved.title} (${resolved.tracks.length} tracks)`
+                        : `${resolved.author} - ${resolved.title} (${formatDuration(resolved.duration)})`;
 
                 const suggestion = {
-                    name: `${track.author} - ${track.title} (${formatDuration(track.duration)})`,
-                    value: track.url,
+                    name: suggestionName.slice(0, 100),
+                    value: resolved.url,
                 };
 
                 await interaction.respond([suggestion]);
@@ -139,17 +187,26 @@ export const PlayCommand = createCommand(
             }
 
             const result = await defaultProvider.search(query, signals);
-            const suggestions = result.filter(Boolean).slice(0, 10).map((t) => ({
-                name: `${t.author} - ${t.title} (${formatDuration(t.duration)})`,
-                value: t.id,
-            }));
+            const suggestions = result
+                .filter(Boolean)
+                .slice(0, 20)
+                .map((t) => ({
+                    name: `${t.author} - ${t.title} (${formatDuration(t.duration)})`.slice(
+                        0,
+                        100,
+                    ),
+                    value: t.id,
+                }));
             await interaction.respond(suggestions);
         } catch (e) {
-            if (e instanceof Error && (e.name === "AbortError" || e.name === "TimeoutError")) {
+            if (
+                e instanceof Error &&
+                (e.name === "AbortError" || e.name === "TimeoutError")
+            ) {
                 return;
             }
             await interaction.respond([]);
             console.log(e);
         }
-    }
+    },
 );

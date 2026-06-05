@@ -10,7 +10,7 @@ import {
 } from "@discordjs/voice";
 import type { Track } from "./track";
 import type { TextBasedChannel, VoiceBasedChannel } from "discord.js";
-import { Readable } from "stream";
+import { Readable } from "node:stream";
 import { createNowPlayingEmbed } from "./utils/trackEmbeds";
 
 export type TrackContext = {
@@ -26,7 +26,6 @@ export class Player {
     private audioPlayer: AudioPlayer = new AudioPlayer();
     private curChannel: VoiceBasedChannel | null = null;
     private voiceConn: VoiceConnection | null = null;
-
     constructor() {
         this.audioPlayer.on(AudioPlayerStatus.Idle, () => {
             if (this.queue.length === 0) {
@@ -39,23 +38,25 @@ export class Player {
     public async enqueue(trackCtx: TrackContext) {
         this.queue.push(trackCtx);
 
-        if (!this.voiceConn) {
+        if (!this.voiceConn && this.queue.length === 1) {
             this.next();
         }
     }
 
     public async next() {
-        const trackCtx = this.queue.shift();
+        const trackCtx = this.queue[0];
         if (!trackCtx) return;
 
-        if (!this.voiceConn) {
-            await this.connect(trackCtx.voiceChannel);
-        } else if (this.curChannel?.id !== trackCtx.voiceChannel.id) {
-            this.disconnect();
-            await this.connect(trackCtx.voiceChannel);
-        }
-
         try {
+            if (!this.voiceConn) {
+                await this.connect(trackCtx.voiceChannel);
+            } else if (this.curChannel?.id !== trackCtx.voiceChannel.id) {
+                this.disconnect();
+                await this.connect(trackCtx.voiceChannel);
+            }
+
+            this.queue.shift();
+
             const stream = await trackCtx.getStream();
             const ffmpeg = Bun.spawn(
                 [
@@ -87,7 +88,10 @@ export class Player {
             }
         } catch (e) {
             console.error(e);
-            if (this.queue.length == 0) {
+            if (this.queue[0] === trackCtx) {
+                this.queue.shift();
+            }
+            if (this.queue.length === 0) {
                 this.disconnect();
             } else {
                 this.next();
@@ -109,7 +113,7 @@ export class Player {
         } catch {
             try {
                 connection.destroy();
-            } catch { }
+            } catch {}
             throw new Error("Failed to join voice channel");
         }
 

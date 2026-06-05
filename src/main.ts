@@ -11,8 +11,8 @@ import { SkipCommand } from "./commands/skip";
 import { StopCommand } from "./commands/stop";
 import { PlayCommand } from "./commands/play";
 import { PlayerManager } from "./playerManager";
-import { SoundcloudProvider } from "./providers/soundcloud";
-import { YtdlpProvider } from "./providers/ytdlp";
+import { SoundcloudProvider } from "./soundcloud";
+import { YtdlpProvider } from "./ytdlp";
 
 const REFRESH_APPLICATION_COMMANDS = false;
 
@@ -39,12 +39,12 @@ function commandsToApplicationCommandsData(commands: Command[]) {
             options:
                 opts.length > 0
                     ? opts.map(([name, opt]) => ({
-                        name,
-                        description: opt.description,
-                        type: optionTypeToDiscordType(opt.type),
-                        required: opt.required ?? false,
-                        autocomplete: !!opt.autocomplete,
-                    }))
+                          name,
+                          description: opt.description,
+                          type: optionTypeToDiscordType(opt.type),
+                          required: opt.required ?? false,
+                          autocomplete: !!opt.autocomplete,
+                      }))
                     : [],
         };
     });
@@ -66,7 +66,11 @@ async function main() {
     const playerManager = new PlayerManager();
 
     const commands: Command[] = [
-        new PlayCommand({ playerManager, providers: [soundcloudProvider, ytdlpProvider], defaultProvider: soundcloudProvider }),
+        new PlayCommand({
+            playerManager,
+            providers: [soundcloudProvider, ytdlpProvider],
+            defaultProvider: soundcloudProvider,
+        }),
         new StopCommand({ playerManager }),
         new SkipCommand({ playerManager }),
     ];
@@ -90,10 +94,12 @@ async function main() {
     });
 
     client.on(Events.InteractionCreate, async (interaction) => {
-        if (!interaction.inCachedGuild())
-            return;
+        if (!interaction.inCachedGuild()) return;
 
-        if (!interaction.isChatInputCommand() && !interaction.isAutocomplete()) {
+        if (
+            !interaction.isChatInputCommand() &&
+            !interaction.isAutocomplete()
+        ) {
             return;
         }
 
@@ -105,7 +111,6 @@ async function main() {
         } else {
             await cmd.autocomplete?.(interaction);
         }
-
     });
 
     client.login(process.env.TOKEN!);
