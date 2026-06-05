@@ -13,6 +13,7 @@ import { PlayCommand } from "./commands/play";
 import { PlayerManager } from "./playerManager";
 import { SoundcloudProvider } from "./soundcloud";
 import { YtdlpProvider } from "./ytdlp";
+import { SpotifyProvider } from "./spotify";
 
 const REFRESH_APPLICATION_COMMANDS = false;
 
@@ -62,13 +63,14 @@ async function main() {
 
     const soundcloudProvider = new SoundcloudProvider();
     const ytdlpProvider = new YtdlpProvider();
+    const spotifyProvider = new SpotifyProvider(soundcloudProvider);
 
     const playerManager = new PlayerManager();
 
     const commands: Command[] = [
         new PlayCommand({
             playerManager,
-            providers: [soundcloudProvider, ytdlpProvider],
+            providers: [soundcloudProvider, ytdlpProvider, spotifyProvider],
             defaultProvider: soundcloudProvider,
         }),
         new StopCommand({ playerManager }),

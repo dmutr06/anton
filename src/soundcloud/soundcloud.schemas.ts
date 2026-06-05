@@ -19,7 +19,6 @@ export const SoundcloudRawTrackSchema = z
         permalink_url: z.string(),
         duration: z.number(),
         artwork_url: z.string().nullable().optional(),
-        policy: z.string(),
         user: SoundcloudUserSchema.optional(),
         media: z.object({
             transcodings: z.array(SoundcloudTranscodingSchema),
@@ -27,17 +26,13 @@ export const SoundcloudRawTrackSchema = z
     })
     .refine(
         (track) => {
-            if (track.policy !== "ALLOW") {
-                return false;
-            }
             const progressive = track.media.transcodings.find(
                 (t) => t.format.protocol === "progressive",
             );
             return !!progressive && !!progressive.url;
         },
         {
-            message:
-                "Track must have ALLOW policy and a valid progressive transcoding format",
+            message: "Track must have a valid progressive transcoding format",
         },
     );
 
