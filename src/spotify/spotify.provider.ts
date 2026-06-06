@@ -2,6 +2,7 @@ import type { SearchableProvider } from "../provider";
 import type { Track, Playlist } from "../track";
 import { SpotifyService } from "./spotify.api";
 import type { SpotifyRawTrack } from "./spotify.schemas";
+import { PlayError, PlayErrorKind } from "../errors";
 
 export type SpotifyTrack = Track & {
     provider: "spotify";
@@ -129,7 +130,11 @@ export class SpotifyProvider implements SearchableProvider<SpotifyTrack> {
         const searchQuery = `${track.author} - ${track.title}`;
         const results = await this.externalProvider.search(searchQuery, signal);
         if (results.length === 0) {
-            throw new Error(`No search results found for: ${searchQuery}`);
+            throw new PlayError(
+                PlayErrorKind.NotFound,
+                `Could not find a match for "${track.author} - ${track.title}" on the external provider.`,
+                `Query: ${searchQuery}`,
+            );
         }
         const bestMatch = results[0];
         return this.externalProvider.getStream(bestMatch, signal);

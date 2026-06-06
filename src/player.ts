@@ -11,7 +11,8 @@ import {
 import type { Track } from "./track";
 import type { TextBasedChannel, VoiceBasedChannel } from "discord.js";
 import { Readable } from "node:stream";
-import { createNowPlayingEmbed } from "./utils/trackEmbeds";
+import { createNowPlayingEmbed, createErrorEmbed } from "./utils/trackEmbeds";
+import { toPlayError } from "./errors";
 
 export type TrackContext = {
     track: Track;
@@ -88,6 +89,19 @@ export class Player {
             }
         } catch (e) {
             console.error(e);
+            if (trackCtx.textChannel.isSendable()) {
+                const playError = toPlayError(e);
+                try {
+                    await trackCtx.textChannel.send({
+                        embeds: [createErrorEmbed(playError)],
+                    });
+                } catch (sendError) {
+                    console.error(
+                        "Failed to send error embed to text channel:",
+                        sendError,
+                    );
+                }
+            }
             if (this.queue[0] === trackCtx) {
                 this.queue.shift();
             }

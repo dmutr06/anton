@@ -11,6 +11,7 @@ import {
     createAddedPlaylistToQueueEmbed,
 } from "../utils/trackEmbeds";
 import type { Track, Playlist } from "../track";
+import { PlayError, PlayErrorKind, toPlayError } from "../errors";
 
 export type PlayCommandDeps = {
     playerManager: PlayerManager;
@@ -82,19 +83,20 @@ export const PlayCommand = createCommand(
             }
         } catch (error) {
             console.error("Error resolving track/playlist:", error);
+            const playError = toPlayError(error);
             await interaction.editReply({
-                embeds: [
-                    createErrorEmbed(
-                        "Something went wrong while resolving the track.",
-                    ),
-                ],
+                embeds: [createErrorEmbed(playError)],
             });
             return;
         }
 
         if (!resolved) {
+            const playError = new PlayError(
+                PlayErrorKind.NotFound,
+                `Could not find a track matching: "${query}"`,
+            );
             await interaction.editReply({
-                embeds: [createErrorEmbed("Could not find a track...")],
+                embeds: [createErrorEmbed(playError)],
             });
             return;
         }

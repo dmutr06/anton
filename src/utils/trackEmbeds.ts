@@ -1,5 +1,6 @@
 import { EmbedBuilder } from "discord.js";
 import type { Track, Playlist } from "../track";
+import { PlayError, PlayErrorKind } from "../errors";
 
 function formatDuration(seconds: number): string {
     if (seconds <= 0) {
@@ -82,10 +83,46 @@ export function createAddedToQueueEmbed(track: Track): EmbedBuilder {
     return embed;
 }
 
-export function createErrorEmbed(message: string): EmbedBuilder {
+export function createErrorEmbed(error: unknown): EmbedBuilder {
+    if (error instanceof PlayError) {
+        const embed = new EmbedBuilder().setAuthor({ name: "Playback Error" });
+
+        switch (error.kind) {
+            case PlayErrorKind.NotFound:
+                embed
+                    .setColor("#F39C12") // Warning orange-yellow
+                    .setTitle("Resource Not Found")
+                    .setDescription(error.message);
+                break;
+            case PlayErrorKind.NotAvailable:
+                embed
+                    .setColor("#E67E22") // Orange
+                    .setTitle("Content Not Available")
+                    .setDescription(error.message);
+                break;
+            default:
+                embed
+                    .setColor("#E74C3C") // Red
+                    .setTitle("An Unexpected Error Occurred")
+                    .setDescription(error.message);
+                break;
+        }
+
+        if (error.details) {
+            embed.addFields({
+                name: "Details",
+                value: `\`\`\`\n${error.details}\n\`\`\``,
+            });
+        }
+
+        return embed;
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
     return new EmbedBuilder()
         .setColor("#E74C3C")
         .setAuthor({ name: "Error" })
+        .setTitle("An Unexpected Error Occurred")
         .setDescription(message);
 }
 
