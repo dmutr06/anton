@@ -2,6 +2,7 @@ import { MessageFlags } from "discord.js";
 import { createCommand, OptionType } from "../command";
 import { LoopMode } from "../player";
 import type { PlayerManager } from "../playerManager";
+import { validateVoice } from "../utils/voice";
 
 export type LoopCommandDeps = {
     playerManager: PlayerManager;
@@ -24,6 +25,7 @@ export const LoopCommand = createCommand(
     },
     async (interaction, { mode }, { playerManager }: LoopCommandDeps) => {
         const player = playerManager.getOrCreate(interaction.guildId);
+        if (!(await validateVoice(interaction, player))) return;
 
         if (!mode) {
             const currentMode = player.getLoopMode();

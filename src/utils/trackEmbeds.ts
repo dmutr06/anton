@@ -23,12 +23,19 @@ function formatDuration(seconds: number): string {
     return parts.join(":");
 }
 
-export function createNowPlayingEmbed(track: Track): EmbedBuilder {
+export function createNowPlayingEmbed(
+    track: Track,
+    lyricsUrl?: string,
+): EmbedBuilder {
     const embed = new EmbedBuilder()
         .setColor("#1DB954")
         .setAuthor({ name: "Now Playing" })
         .setTitle(track.title)
-        .setDescription(`by **${track.author}**`)
+        .setDescription(
+            lyricsUrl
+                ? `by **${track.author}**\n\n[📝 Lyrics on Genius](${lyricsUrl})`
+                : `by **${track.author}**`,
+        )
         .addFields(
             {
                 name: "Duration",

@@ -9,6 +9,7 @@ export type TrackContext = {
     args?: string;
     voiceChannel: VoiceBasedChannel;
     textChannel: TextBasedChannel;
+    lyricsUrl?: string;
 };
 
 export class PlaybackSession {

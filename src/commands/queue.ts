@@ -72,6 +72,11 @@ export const QueueCommand = createCommand(
 
         embed.setDescription(descriptionParts.join("\n"));
 
+        const loopMode = player.getLoopMode();
+        embed.setFooter({
+            text: `Loop Mode: ${loopMode.toUpperCase()} | Queue Size: ${queue.length} track(s)`,
+        });
+
         await interaction.reply({ embeds: [embed] });
     },
 );

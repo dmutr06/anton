@@ -10,8 +10,11 @@ import {
 } from "@discordjs/voice";
 import type { VoiceBasedChannel } from "discord.js";
 import { toPlayError } from "./errors";
+import { GeniusAPI } from "./genius/genius.api";
 import { PlaybackSession, type TrackContext } from "./playbackSession";
 import { createErrorEmbed, createNowPlayingEmbed } from "./utils/trackEmbeds";
+
+const geniusApi = new GeniusAPI();
 
 export enum LoopMode {
     Off = "off",
@@ -104,8 +107,28 @@ export class Player {
     private async sendNowPlaying(trackCtx: TrackContext) {
         if (trackCtx.textChannel.isSendable()) {
             try {
+                let lyricsUrl: string | undefined;
+                if (process.env.GENIUS_ACCESS_TOKEN) {
+                    const cleanTitle = trackCtx.track.title
+                        .replace(/\[[^\]]+\]/g, "")
+                        .replace(/\([^)]+\)/g, "")
+                        .trim();
+                    const query =
+                        trackCtx.track.author &&
+                        trackCtx.track.author !== "Unknown"
+                            ? `${trackCtx.track.author} ${cleanTitle}`
+                            : cleanTitle;
+
+                    const song = await geniusApi.searchSong(query);
+                    if (song) {
+                        lyricsUrl = song.url;
+                    }
+                }
+
+                trackCtx.lyricsUrl = lyricsUrl;
+
                 await trackCtx.textChannel.send({
-                    embeds: [createNowPlayingEmbed(trackCtx.track)],
+                    embeds: [createNowPlayingEmbed(trackCtx.track, lyricsUrl)],
                 });
             } catch (err) {
                 console.error("Failed to send now playing embed:", err);

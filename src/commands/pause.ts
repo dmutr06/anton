@@ -1,6 +1,7 @@
 import { MessageFlags } from "discord.js";
 import { createCommand } from "../command";
 import type { PlayerManager } from "../playerManager";
+import { validateVoice } from "../utils/voice";
 
 export type PauseCommandDeps = {
     playerManager: PlayerManager;
@@ -11,15 +12,8 @@ export const PauseCommand = createCommand(
     "pause playback",
     {},
     async (interaction, _, { playerManager }: PauseCommandDeps) => {
-        if (!interaction.member.voice.channel) {
-            await interaction.reply({
-                content: "Must be in voice channel",
-                flags: MessageFlags.Ephemeral,
-            });
-            return;
-        }
-
         const player = playerManager.getOrCreate(interaction.guildId);
+        if (!(await validateVoice(interaction, player))) return;
         if (player.isPaused()) {
             await interaction.reply({
                 content: "Playback is already paused",

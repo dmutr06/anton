@@ -1,6 +1,7 @@
 import { MessageFlags } from "discord.js";
 import { createCommand } from "../command";
 import type { PlayerManager } from "../playerManager";
+import { validateVoice } from "../utils/voice";
 
 export type ClearCommandDeps = {
     playerManager: PlayerManager;
@@ -11,15 +12,9 @@ export const ClearCommand = createCommand(
     "clear the music queue",
     {},
     async (interaction, _, { playerManager }: ClearCommandDeps) => {
-        if (!interaction.member.voice.channel) {
-            await interaction.reply({
-                content: "Must be in voice channel",
-                flags: MessageFlags.Ephemeral,
-            });
-            return;
-        }
-
         const player = playerManager.getOrCreate(interaction.guildId);
+        if (!(await validateVoice(interaction, player))) return;
+
         const queue = player.getQueue();
 
         if (queue.length === 0) {

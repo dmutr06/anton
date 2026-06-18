@@ -24,7 +24,12 @@ export const NowPlayingCommand = createCommand(
         }
 
         await interaction.reply({
-            embeds: [createNowPlayingEmbed(currentTrack.track)],
+            embeds: [
+                createNowPlayingEmbed(
+                    currentTrack.track,
+                    currentTrack.lyricsUrl,
+                ),
+            ],
         });
     },
 );

@@ -12,6 +12,7 @@ import {
     createAddedToQueueEmbed,
     createErrorEmbed,
 } from "../utils/trackEmbeds";
+import { validateVoice } from "../utils/voice";
 
 export type PlayCommandDeps = {
     playerManager: PlayerManager;
@@ -52,14 +53,11 @@ export const PlayCommand = createCommand(
             await interaction.reply("Must be in guild");
             return;
         }
-        if (!interaction.member.voice.channel) {
-            await interaction.reply("Must be in voice channel");
-            return;
-        }
-
-        await interaction.deferReply();
 
         const player = playerManager.getOrCreate(interaction.guildId);
+        if (!(await validateVoice(interaction, player))) return;
+
+        await interaction.deferReply();
 
         const query = rawQuery.trim();
         let resolved: Track | Playlist | null = null;
@@ -106,7 +104,7 @@ export const PlayCommand = createCommand(
                 player.enqueue({
                     track,
                     args,
-                    voiceChannel: interaction.member.voice.channel,
+                    voiceChannel: interaction.member.voice.channel!,
                     textChannel: interaction.channel,
                     getStream: (signal) =>
                         chosenProvider.getStream(track, signal),
@@ -120,7 +118,7 @@ export const PlayCommand = createCommand(
             player.enqueue({
                 track: resolved,
                 args,
-                voiceChannel: interaction.member.voice.channel,
+                voiceChannel: interaction.member.voice.channel!,
                 textChannel: interaction.channel,
                 getStream: (signal) =>
                     chosenProvider.getStream(resolved, signal),

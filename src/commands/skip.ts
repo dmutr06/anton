@@ -1,5 +1,6 @@
 import { createCommand } from "../command";
 import type { PlayerManager } from "../playerManager";
+import { validateVoice } from "../utils/voice";
 
 export type SkipCommandDeps = {
     playerManager: PlayerManager;
@@ -11,6 +12,7 @@ export const SkipCommand = createCommand(
     {},
     async (interaction, _, { playerManager }: SkipCommandDeps) => {
         const player = playerManager.getOrCreate(interaction.guildId);
+        if (!(await validateVoice(interaction, player))) return;
         if (!player) {
             await interaction.reply("Not playing anything");
             return;
