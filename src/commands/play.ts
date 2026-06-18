@@ -108,7 +108,8 @@ export const PlayCommand = createCommand(
                     args,
                     voiceChannel: interaction.member.voice.channel,
                     textChannel: interaction.channel,
-                    getStream: () => chosenProvider.getStream(track),
+                    getStream: (signal) =>
+                        chosenProvider.getStream(track, signal),
                 });
             }
 
@@ -121,7 +122,8 @@ export const PlayCommand = createCommand(
                 args,
                 voiceChannel: interaction.member.voice.channel,
                 textChannel: interaction.channel,
-                getStream: () => chosenProvider.getStream(resolved),
+                getStream: (signal) =>
+                    chosenProvider.getStream(resolved, signal),
             });
 
             await interaction.editReply({
@@ -151,6 +153,7 @@ export const PlayCommand = createCommand(
         try {
             if (!query) {
                 const result = await defaultProvider.getTrending(signals);
+                if (signals.aborted) return;
 
                 const suggestions = result
                     .filter(Boolean)
@@ -163,6 +166,7 @@ export const PlayCommand = createCommand(
                         value: t.id,
                     }));
 
+                if (signals.aborted) return;
                 await interaction.respond(suggestions);
                 return;
             }
@@ -171,6 +175,7 @@ export const PlayCommand = createCommand(
                 if (!provider.matchUrl(query)) continue;
 
                 const resolved = await provider.resolveUrl(query, signals);
+                if (signals.aborted) return;
                 if (!resolved) break;
 
                 const suggestionName =
@@ -183,12 +188,15 @@ export const PlayCommand = createCommand(
                     value: resolved.url,
                 };
 
+                if (signals.aborted) return;
                 await interaction.respond([suggestion]);
 
                 return;
             }
 
             const result = await defaultProvider.search(query, signals);
+            if (signals.aborted) return;
+
             const suggestions = result
                 .filter(Boolean)
                 .slice(0, 20)
@@ -199,6 +207,8 @@ export const PlayCommand = createCommand(
                     ),
                     value: t.id,
                 }));
+
+            if (signals.aborted) return;
             await interaction.respond(suggestions);
         } catch (e) {
             if (
@@ -207,8 +217,15 @@ export const PlayCommand = createCommand(
             ) {
                 return;
             }
-            await interaction.respond([]);
-            console.log(e);
+            try {
+                await interaction.respond([]);
+            } catch (err) {
+                console.error(
+                    "Failed to send empty autocomplete response:",
+                    err,
+                );
+            }
+            console.error("Error in play autocomplete:", e);
         }
     },
 );

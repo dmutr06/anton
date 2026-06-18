@@ -51,6 +51,14 @@ function commandsToApplicationCommandsData(commands: Command[]) {
     });
 }
 
+process.on("uncaughtException", (error) => {
+    console.error("Uncaught Exception:", error);
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+    console.error("Unhandled Rejection at:", promise, "reason:", reason);
+});
+
 async function main() {
     const rest = new REST({ version: "10" }).setToken(process.env.TOKEN!);
     const client = new Client({
@@ -96,22 +104,28 @@ async function main() {
     });
 
     client.on(Events.InteractionCreate, async (interaction) => {
-        if (!interaction.inCachedGuild()) return;
+        try {
+            if (!interaction.inCachedGuild()) return;
 
-        if (
-            !interaction.isChatInputCommand() &&
-            !interaction.isAutocomplete()
-        ) {
-            return;
-        }
+            if (
+                !interaction.isChatInputCommand() &&
+                !interaction.isAutocomplete()
+            ) {
+                return;
+            }
 
-        const cmd = commands.find((c) => c.name === interaction.commandName);
-        if (!cmd) return;
+            const cmd = commands.find(
+                (c) => c.name === interaction.commandName,
+            );
+            if (!cmd) return;
 
-        if (interaction.isChatInputCommand()) {
-            await cmd.run(interaction);
-        } else {
-            await cmd.autocomplete?.(interaction);
+            if (interaction.isChatInputCommand()) {
+                await cmd.run(interaction);
+            } else {
+                await cmd.autocomplete?.(interaction);
+            }
+        } catch (e) {
+            console.error("Error executing interaction:", e);
         }
     });
 

@@ -16,7 +16,7 @@ import { toPlayError } from "./errors";
 
 export type TrackContext = {
     track: Track;
-    getStream: () => Promise<ReadableStream>;
+    getStream: (signal?: AbortSignal) => Promise<ReadableStream>;
     args?: string;
     voiceChannel: VoiceBasedChannel;
     textChannel: TextBasedChannel;
@@ -27,12 +27,25 @@ export class Player {
     private audioPlayer: AudioPlayer = new AudioPlayer();
     private curChannel: VoiceBasedChannel | null = null;
     private voiceConn: VoiceConnection | null = null;
+    private currentTrack: TrackContext | null = null;
+    private currentAbortController: AbortController | null = null;
+    private currentFfmpegProcess: ReturnType<typeof Bun.spawn> | null = null;
+    private isLoading = false;
     constructor() {
         this.audioPlayer.on(AudioPlayerStatus.Idle, () => {
             if (this.queue.length === 0) {
                 this.disconnect();
             }
             this.next();
+        });
+
+        this.audioPlayer.on("error", (error) => {
+            console.error("AudioPlayer Error:", error);
+            if (this.queue.length > 0) {
+                this.next();
+            } else {
+                this.disconnect();
+            }
         });
     }
 
@@ -44,9 +57,34 @@ export class Player {
         }
     }
 
+    public cleanupCurrentTrack() {
+        if (this.currentAbortController) {
+            this.currentAbortController.abort();
+            this.currentAbortController = null;
+        }
+        if (this.currentFfmpegProcess) {
+            try {
+                this.currentFfmpegProcess.kill();
+            } catch (e) {
+                console.error("Failed to kill ffmpeg process:", e);
+            }
+            this.currentFfmpegProcess = null;
+        }
+    }
+
     public async next() {
+        if (this.isLoading) return;
+
         const trackCtx = this.queue[0];
-        if (!trackCtx) return;
+        if (!trackCtx) {
+            this.currentTrack = null;
+            return;
+        }
+
+        this.isLoading = true;
+        this.currentTrack = trackCtx;
+        this.currentAbortController = new AbortController();
+        const signal = this.currentAbortController.signal;
 
         try {
             if (!this.voiceConn) {
@@ -56,9 +94,24 @@ export class Player {
                 await this.connect(trackCtx.voiceChannel);
             }
 
+            if (signal.aborted) {
+                this.isLoading = false;
+                this.currentTrack = null;
+                this.next();
+                return;
+            }
+
             this.queue.shift();
 
-            const stream = await trackCtx.getStream();
+            const stream = await trackCtx.getStream(signal);
+
+            if (signal.aborted) {
+                this.isLoading = false;
+                this.currentTrack = null;
+                this.next();
+                return;
+            }
+
             const ffmpeg = Bun.spawn(
                 [
                     "ffmpeg",
@@ -76,6 +129,19 @@ export class Player {
                 },
             );
 
+            if (signal.aborted) {
+                try {
+                    ffmpeg.kill();
+                } catch {}
+                this.isLoading = false;
+                this.currentTrack = null;
+                this.next();
+                return;
+            }
+
+            this.currentFfmpegProcess = ffmpeg;
+            this.isLoading = false;
+
             const resource = createAudioResource(Readable.from(ffmpeg.stdout), {
                 inputType: StreamType.OggOpus,
             });
@@ -88,6 +154,15 @@ export class Player {
                 });
             }
         } catch (e) {
+            this.isLoading = false;
+            this.currentFfmpegProcess = null;
+
+            if (signal.aborted) {
+                this.currentTrack = null;
+                this.next();
+                return;
+            }
+
             console.error(e);
             if (trackCtx.textChannel.isSendable()) {
                 const playError = toPlayError(e);
@@ -105,6 +180,7 @@ export class Player {
             if (this.queue[0] === trackCtx) {
                 this.queue.shift();
             }
+            this.currentTrack = null;
             if (this.queue.length === 0) {
                 this.disconnect();
             } else {
@@ -122,6 +198,10 @@ export class Player {
             selfMute: false,
         });
 
+        connection.on("error", (error) => {
+            console.error("VoiceConnection Error:", error);
+        });
+
         try {
             await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
         } catch {
@@ -136,6 +216,9 @@ export class Player {
     }
 
     public async disconnect() {
+        this.queue = [];
+        this.cleanupCurrentTrack();
+        this.currentTrack = null;
         this.curChannel = null;
         this.voiceConn?.destroy();
         this.voiceConn = null;
@@ -143,12 +226,21 @@ export class Player {
 
     public stop() {
         this.queue = [];
+        this.cleanupCurrentTrack();
+        this.currentTrack = null;
         this.audioPlayer.stop();
+        this.disconnect();
     }
 
     public skip(): boolean {
-        if (this.audioPlayer.state.status !== AudioPlayerStatus.Idle) {
+        if (this.currentTrack) {
+            this.cleanupCurrentTrack();
+            const wasIdle =
+                this.audioPlayer.state.status === AudioPlayerStatus.Idle;
             this.audioPlayer.stop();
+            if (wasIdle) {
+                this.next();
+            }
             return true;
         }
         return false;
