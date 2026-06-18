@@ -1,4 +1,4 @@
-import type { Track, Playlist } from "./track";
+import type { Playlist, Track } from "./track";
 
 export interface Provider<TTrack extends Track = Track> {
     readonly providerId: TTrack["provider"];

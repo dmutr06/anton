@@ -1,6 +1,6 @@
 import { EmbedBuilder } from "discord.js";
-import type { Track, Playlist } from "../track";
 import { PlayError, PlayErrorKind } from "../errors";
+import type { Playlist, Track } from "../track";
 
 function formatDuration(seconds: number): string {
     if (seconds <= 0) {

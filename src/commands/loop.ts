@@ -1,7 +1,7 @@
 import { MessageFlags } from "discord.js";
 import { createCommand, OptionType } from "../command";
-import type { PlayerManager } from "../playerManager";
 import { LoopMode } from "../player";
+import type { PlayerManager } from "../playerManager";
 
 export type LoopCommandDeps = {
     playerManager: PlayerManager;

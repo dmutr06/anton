@@ -1,18 +1,18 @@
 import { z } from "zod";
 import {
+    SoundcloudAPIError,
     SoundcloudError,
     SoundcloudValidationError,
-    SoundcloudAPIError,
 } from "./soundcloud.errors";
 import {
+    SoundcloudChartsResponseSchema,
+    SoundcloudPlaylistResponseSchema,
+    type SoundcloudRawPlaylist,
+    SoundcloudRawPlaylistSchema,
     type SoundcloudRawTrack,
     SoundcloudRawTrackSchema,
     SoundcloudSearchResponseSchema,
-    SoundcloudChartsResponseSchema,
-    SoundcloudPlaylistResponseSchema,
     SoundcloudStreamResponseSchema,
-    type SoundcloudRawPlaylist,
-    SoundcloudRawPlaylistSchema,
 } from "./soundcloud.schemas";
 
 export class SoundcloudService {

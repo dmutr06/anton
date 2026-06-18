@@ -1,17 +1,17 @@
 import {
+    SpotifyAPIError,
     SpotifyError,
     SpotifyValidationError,
-    SpotifyAPIError,
 } from "./spotify.errors";
 import {
-    SpotifyTokenResponseSchema,
-    SpotifyTrackSchema,
     SpotifyAlbumSchema,
     SpotifyPlaylistSchema,
-    SpotifySearchResponseSchema,
-    type SpotifyRawTrack,
     type SpotifyRawAlbum,
     type SpotifyRawPlaylist,
+    type SpotifyRawTrack,
+    SpotifySearchResponseSchema,
+    SpotifyTokenResponseSchema,
+    SpotifyTrackSchema,
 } from "./spotify.schemas";
 
 export class SpotifyService {

@@ -1,8 +1,8 @@
+import { PlayError, PlayErrorKind } from "../errors";
 import type { SearchableProvider } from "../provider";
-import type { Track, Playlist } from "../track";
+import type { Playlist, Track } from "../track";
 import { SpotifyService } from "./spotify.api";
 import type { SpotifyRawTrack } from "./spotify.schemas";
-import { PlayError, PlayErrorKind } from "../errors";
 
 export type SpotifyTrack = Track & {
     provider: "spotify";

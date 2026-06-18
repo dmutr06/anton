@@ -1,5 +1,5 @@
 import type { SearchableProvider, TrendingProvider } from "../provider";
-import type { Track, Playlist } from "../track";
+import type { Playlist, Track } from "../track";
 import { SoundcloudService } from "./soundcloud.api";
 import type { SoundcloudRawTrack } from "./soundcloud.schemas";
 

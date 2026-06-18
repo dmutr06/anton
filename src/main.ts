@@ -6,22 +6,22 @@ import {
     REST,
     Routes,
 } from "discord.js";
-import { OptionType, type Command } from "./command";
-import { SkipCommand } from "./commands/skip";
-import { StopCommand } from "./commands/stop";
-import { PlayCommand } from "./commands/play";
-import { PauseCommand } from "./commands/pause";
-import { ResumeCommand } from "./commands/resume";
-import { NowPlayingCommand } from "./commands/nowplaying";
-import { QueueCommand } from "./commands/queue";
+import { type Command, OptionType } from "./command";
 import { ClearCommand } from "./commands/clear";
 import { LoopCommand } from "./commands/loop";
+import { NowPlayingCommand } from "./commands/nowplaying";
+import { PauseCommand } from "./commands/pause";
+import { PlayCommand } from "./commands/play";
+import { QueueCommand } from "./commands/queue";
+import { ResumeCommand } from "./commands/resume";
+import { SkipCommand } from "./commands/skip";
+import { StopCommand } from "./commands/stop";
 import { PlayerManager } from "./playerManager";
 import { SoundcloudProvider } from "./soundcloud";
-import { YtdlpProvider } from "./ytdlp";
 import { SpotifyProvider } from "./spotify";
+import { YtdlpProvider } from "./ytdlp";
 
-const REFRESH_APPLICATION_COMMANDS = true;
+const REFRESH_APPLICATION_COMMANDS = process.argv.includes("--register");
 
 export function optionTypeToDiscordType(
     type: OptionType,
@@ -137,6 +137,28 @@ async function main() {
             }
         } catch (e) {
             console.error("Error executing interaction:", e);
+        }
+    });
+
+    client.on(Events.VoiceStateUpdate, (oldState, newState) => {
+        try {
+            const guildId = oldState.guild.id;
+            const player = playerManager.getOrCreate(guildId);
+            const botChannel = player.getVoiceChannel();
+
+            if (!botChannel) return;
+
+            if (newState.id === client.user?.id && !newState.channelId) {
+                player.disconnect();
+                return;
+            }
+
+            const nonBots = botChannel.members.filter((m) => !m.user.bot);
+            if (nonBots.size === 0) {
+                player.disconnect();
+            }
+        } catch (e) {
+            console.error("Error handling voice state update:", e);
         }
     });
 

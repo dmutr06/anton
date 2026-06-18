@@ -1,17 +1,17 @@
+import { createCommand, OptionType } from "../command";
+import { PlayError, PlayErrorKind, toPlayError } from "../errors";
+import type { PlayerManager } from "../playerManager";
 import type {
     Provider,
     SearchableProvider,
     TrendingProvider,
 } from "../provider";
-import { createCommand, OptionType } from "../command";
-import type { PlayerManager } from "../playerManager";
+import type { Playlist, Track } from "../track";
 import {
+    createAddedPlaylistToQueueEmbed,
     createAddedToQueueEmbed,
     createErrorEmbed,
-    createAddedPlaylistToQueueEmbed,
 } from "../utils/trackEmbeds";
-import type { Track, Playlist } from "../track";
-import { PlayError, PlayErrorKind, toPlayError } from "../errors";
 
 export type PlayCommandDeps = {
     playerManager: PlayerManager;

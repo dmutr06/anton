@@ -8,11 +8,10 @@ import {
     type VoiceConnection,
     VoiceConnectionStatus,
 } from "@discordjs/voice";
-import type { Track } from "./track";
-import type { TextBasedChannel, VoiceBasedChannel } from "discord.js";
-import { Readable } from "node:stream";
-import { createNowPlayingEmbed, createErrorEmbed } from "./utils/trackEmbeds";
+import type { VoiceBasedChannel } from "discord.js";
 import { toPlayError } from "./errors";
+import { PlaybackSession, type TrackContext } from "./playbackSession";
+import { createErrorEmbed, createNowPlayingEmbed } from "./utils/trackEmbeds";
 
 export enum LoopMode {
     Off = "off",
@@ -20,48 +19,21 @@ export enum LoopMode {
     Queue = "queue",
 }
 
-export type TrackContext = {
-    track: Track;
-    getStream: (signal?: AbortSignal) => Promise<ReadableStream>;
-    args?: string;
-    voiceChannel: VoiceBasedChannel;
-    textChannel: TextBasedChannel;
-};
-
 export class Player {
     private queue: TrackContext[] = [];
     private audioPlayer: AudioPlayer = new AudioPlayer();
     private curChannel: VoiceBasedChannel | null = null;
     private voiceConn: VoiceConnection | null = null;
-    private currentTrack: TrackContext | null = null;
-    private currentAbortController: AbortController | null = null;
-    private currentFfmpegProcess: ReturnType<typeof Bun.spawn> | null = null;
-    private isLoading = false;
+    private currentSession: PlaybackSession | null = null;
     private loopMode: LoopMode = LoopMode.Off;
+
     constructor() {
-        this.audioPlayer.on(AudioPlayerStatus.Idle, () => {
-            if (this.currentTrack) {
-                if (this.loopMode === LoopMode.Track) {
-                    this.queue.unshift(this.currentTrack);
-                } else if (this.loopMode === LoopMode.Queue) {
-                    this.queue.push(this.currentTrack);
-                }
-            }
-
-            if (this.queue.length === 0) {
-                this.disconnect();
-            }
-            this.next();
-        });
-
-        this.audioPlayer.on("error", (error) => {
-            console.error("AudioPlayer Error:", error);
-            if (this.queue.length > 0) {
-                this.next();
-            } else {
-                this.disconnect();
-            }
-        });
+        this.audioPlayer.on(AudioPlayerStatus.Idle, () =>
+            this.handlePlaybackIdle(),
+        );
+        this.audioPlayer.on("error", (error) =>
+            this.handlePlaybackError(error),
+        );
     }
 
     public async enqueue(trackCtx: TrackContext) {
@@ -73,135 +45,105 @@ export class Player {
     }
 
     public cleanupCurrentTrack() {
-        if (this.currentAbortController) {
-            this.currentAbortController.abort();
-            this.currentAbortController = null;
-        }
-        if (this.currentFfmpegProcess) {
-            try {
-                this.currentFfmpegProcess.kill();
-            } catch (e) {
-                console.error("Failed to kill ffmpeg process:", e);
-            }
-            this.currentFfmpegProcess = null;
+        if (this.currentSession) {
+            this.currentSession.dispose();
+            this.currentSession = null;
         }
     }
 
     public async next() {
-        if (this.isLoading) return;
-
         const trackCtx = this.queue[0];
         if (!trackCtx) {
-            this.currentTrack = null;
+            this.currentSession = null;
             return;
         }
 
-        this.isLoading = true;
-        this.currentTrack = trackCtx;
-        this.currentAbortController = new AbortController();
-        const signal = this.currentAbortController.signal;
+        this.currentSession = new PlaybackSession(trackCtx);
+        const signal = this.currentSession.signal;
 
         try {
-            if (!this.voiceConn) {
-                await this.connect(trackCtx.voiceChannel);
-            } else if (this.curChannel?.id !== trackCtx.voiceChannel.id) {
-                this.disconnect();
-                await this.connect(trackCtx.voiceChannel);
-            }
+            await this.ensureVoiceConnection(trackCtx.voiceChannel);
 
             if (signal.aborted) {
-                this.isLoading = false;
-                this.currentTrack = null;
-                this.next();
+                if (this.queue[0] === trackCtx) {
+                    this.queue.shift();
+                }
+                this.currentSession = null;
                 return;
             }
 
             this.queue.shift();
 
-            const stream = await trackCtx.getStream(signal);
+            const outputStream = await this.currentSession.start();
 
-            if (signal.aborted) {
-                this.isLoading = false;
-                this.currentTrack = null;
-                this.next();
-                return;
-            }
-
-            const ffmpeg = Bun.spawn(
-                [
-                    "ffmpeg",
-                    "-i",
-                    "pipe:0",
-                    ...(trackCtx.args ? ["-af", trackCtx.args] : []),
-                    "-f",
-                    "opus",
-                    "pipe:1",
-                ],
-                {
-                    stdin: stream,
-                    stdout: "pipe",
-                    stderr: null,
-                },
-            );
-
-            if (signal.aborted) {
-                try {
-                    ffmpeg.kill();
-                } catch {}
-                this.isLoading = false;
-                this.currentTrack = null;
-                this.next();
-                return;
-            }
-
-            this.currentFfmpegProcess = ffmpeg;
-            this.isLoading = false;
-
-            const resource = createAudioResource(Readable.from(ffmpeg.stdout), {
+            const resource = createAudioResource(outputStream, {
                 inputType: StreamType.OggOpus,
             });
 
             this.voiceConn?.subscribe(this.audioPlayer);
             this.audioPlayer.play(resource);
 
-            if (trackCtx.textChannel.isSendable()) {
+            await this.sendNowPlaying(trackCtx);
+        } catch (e) {
+            await this.handlePlayError(trackCtx, e, signal);
+        }
+    }
+
+    private async ensureVoiceConnection(channel: VoiceBasedChannel) {
+        if (!this.voiceConn) {
+            await this.connect(channel);
+        } else if (this.curChannel?.id !== channel.id) {
+            this.disconnect();
+            await this.connect(channel);
+        }
+    }
+
+    private async sendNowPlaying(trackCtx: TrackContext) {
+        if (trackCtx.textChannel.isSendable()) {
+            try {
                 await trackCtx.textChannel.send({
                     embeds: [createNowPlayingEmbed(trackCtx.track)],
                 });
+            } catch (err) {
+                console.error("Failed to send now playing embed:", err);
             }
-        } catch (e) {
-            this.isLoading = false;
-            this.currentFfmpegProcess = null;
+        }
+    }
 
-            if (signal.aborted) {
-                this.currentTrack = null;
-                this.next();
-                return;
-            }
+    private async handlePlayError(
+        trackCtx: TrackContext,
+        error: unknown,
+        signal: AbortSignal,
+    ) {
+        if (this.queue[0] === trackCtx) {
+            this.queue.shift();
+        }
+        this.currentSession = null;
 
-            console.error(e);
-            if (trackCtx.textChannel.isSendable()) {
-                const playError = toPlayError(e);
-                try {
-                    await trackCtx.textChannel.send({
-                        embeds: [createErrorEmbed(playError)],
-                    });
-                } catch (sendError) {
-                    console.error(
-                        "Failed to send error embed to text channel:",
-                        sendError,
-                    );
-                }
+        if (signal.aborted) {
+            this.next();
+            return;
+        }
+
+        console.error(error);
+        if (trackCtx.textChannel.isSendable()) {
+            const playError = toPlayError(error);
+            try {
+                await trackCtx.textChannel.send({
+                    embeds: [createErrorEmbed(playError)],
+                });
+            } catch (sendError) {
+                console.error(
+                    "Failed to send error embed to text channel:",
+                    sendError,
+                );
             }
-            if (this.queue[0] === trackCtx) {
-                this.queue.shift();
-            }
-            this.currentTrack = null;
-            if (this.queue.length === 0) {
-                this.disconnect();
-            } else {
-                this.next();
-            }
+        }
+
+        if (this.queue.length === 0) {
+            this.disconnect();
+        } else {
+            this.next();
         }
     }
 
@@ -231,36 +173,50 @@ export class Player {
         this.curChannel = channel;
     }
 
-    public async disconnect() {
+    public disconnect() {
         this.queue = [];
         this.cleanupCurrentTrack();
-        this.currentTrack = null;
         this.curChannel = null;
         this.voiceConn?.destroy();
         this.voiceConn = null;
     }
 
     public stop() {
-        this.queue = [];
-        this.cleanupCurrentTrack();
-        this.currentTrack = null;
         this.audioPlayer.stop();
         this.disconnect();
     }
 
     public skip(): boolean {
-        if (this.currentTrack) {
+        if (this.currentSession) {
             this.cleanupCurrentTrack();
-            this.currentTrack = null;
-            const wasIdle =
-                this.audioPlayer.state.status === AudioPlayerStatus.Idle;
             this.audioPlayer.stop();
-            if (wasIdle) {
-                this.next();
-            }
             return true;
         }
         return false;
+    }
+
+    private handlePlaybackIdle() {
+        if (this.currentSession) {
+            if (this.loopMode === LoopMode.Track) {
+                this.queue.unshift(this.currentSession.trackCtx);
+            } else if (this.loopMode === LoopMode.Queue) {
+                this.queue.push(this.currentSession.trackCtx);
+            }
+        }
+
+        if (this.queue.length === 0) {
+            this.disconnect();
+        }
+        this.next();
+    }
+
+    private handlePlaybackError(error: unknown) {
+        console.error("AudioPlayer Error:", error);
+        if (this.queue.length > 0) {
+            this.next();
+        } else {
+            this.disconnect();
+        }
     }
 
     public getQueue(): TrackContext[] {
@@ -268,7 +224,11 @@ export class Player {
     }
 
     public getCurrentTrack(): TrackContext | null {
-        return this.currentTrack;
+        return this.currentSession ? this.currentSession.trackCtx : null;
+    }
+
+    public getVoiceChannel(): VoiceBasedChannel | null {
+        return this.curChannel;
     }
 
     public pause(): boolean {
