@@ -15,7 +15,11 @@ export const LoopCommand = createCommand(
             type: OptionType.String,
             description: "loop mode (off, track, queue)",
             required: false,
-            autocomplete: true,
+            choices: [
+                { name: "Off - disable looping", value: "off" },
+                { name: "Track - repeat the current track", value: "track" },
+                { name: "Queue - repeat the entire queue", value: "queue" },
+            ],
         },
     },
     async (interaction, { mode }, { playerManager }: LoopCommandDeps) => {
@@ -44,26 +48,5 @@ export const LoopCommand = createCommand(
 
         player.setLoopMode(selectedMode);
         await interaction.reply(`Loop mode set to **${selectedMode}**`);
-    },
-    async (interaction) => {
-        const focused = interaction.options.getFocused(true);
-        if (focused.name !== "mode") return;
-
-        const val = focused.value.toLowerCase();
-        const choices = [
-            { name: "Off - disable looping", value: "off" },
-            { name: "Track - repeat the current track", value: "track" },
-            { name: "Queue - repeat the entire queue", value: "queue" },
-        ];
-
-        const filtered = choices.filter(
-            (c) => c.value.includes(val) || c.name.toLowerCase().includes(val),
-        );
-
-        try {
-            await interaction.respond(filtered.slice(0, 25));
-        } catch (err) {
-            console.error("Failed to respond to loop autocomplete:", err);
-        }
     },
 );

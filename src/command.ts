@@ -29,6 +29,7 @@ export type BaseOption<T extends OptionType> = {
     description: string;
     type: T;
     autocomplete?: boolean;
+    choices?: { name: string; value: string | number }[];
 };
 
 export type RequiredOption<T extends OptionType> = BaseOption<T> & {

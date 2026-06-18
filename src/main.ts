@@ -50,6 +50,7 @@ function commandsToApplicationCommandsData(commands: Command[]) {
                           type: optionTypeToDiscordType(opt.type),
                           required: opt.required ?? false,
                           autocomplete: !!opt.autocomplete,
+                          choices: opt.choices,
                       }))
                     : [],
         };
