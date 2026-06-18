@@ -15,12 +15,13 @@ import { ResumeCommand } from "./commands/resume";
 import { NowPlayingCommand } from "./commands/nowplaying";
 import { QueueCommand } from "./commands/queue";
 import { ClearCommand } from "./commands/clear";
+import { LoopCommand } from "./commands/loop";
 import { PlayerManager } from "./playerManager";
 import { SoundcloudProvider } from "./soundcloud";
 import { YtdlpProvider } from "./ytdlp";
 import { SpotifyProvider } from "./spotify";
 
-const REFRESH_APPLICATION_COMMANDS = false;
+const REFRESH_APPLICATION_COMMANDS = true;
 
 export function optionTypeToDiscordType(
     type: OptionType,
@@ -92,6 +93,7 @@ async function main() {
         new NowPlayingCommand({ playerManager }),
         new QueueCommand({ playerManager }),
         new ClearCommand({ playerManager }),
+        new LoopCommand({ playerManager }),
     ];
 
     client.on(Events.ClientReady, async (client) => {

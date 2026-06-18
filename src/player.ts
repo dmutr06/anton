@@ -14,6 +14,12 @@ import { Readable } from "node:stream";
 import { createNowPlayingEmbed, createErrorEmbed } from "./utils/trackEmbeds";
 import { toPlayError } from "./errors";
 
+export enum LoopMode {
+    Off = "off",
+    Track = "track",
+    Queue = "queue",
+}
+
 export type TrackContext = {
     track: Track;
     getStream: (signal?: AbortSignal) => Promise<ReadableStream>;
@@ -31,8 +37,17 @@ export class Player {
     private currentAbortController: AbortController | null = null;
     private currentFfmpegProcess: ReturnType<typeof Bun.spawn> | null = null;
     private isLoading = false;
+    private loopMode: LoopMode = LoopMode.Off;
     constructor() {
         this.audioPlayer.on(AudioPlayerStatus.Idle, () => {
+            if (this.currentTrack) {
+                if (this.loopMode === LoopMode.Track) {
+                    this.queue.unshift(this.currentTrack);
+                } else if (this.loopMode === LoopMode.Queue) {
+                    this.queue.push(this.currentTrack);
+                }
+            }
+
             if (this.queue.length === 0) {
                 this.disconnect();
             }
@@ -236,6 +251,7 @@ export class Player {
     public skip(): boolean {
         if (this.currentTrack) {
             this.cleanupCurrentTrack();
+            this.currentTrack = null;
             const wasIdle =
                 this.audioPlayer.state.status === AudioPlayerStatus.Idle;
             this.audioPlayer.stop();
@@ -269,5 +285,13 @@ export class Player {
 
     public clearQueue() {
         this.queue = [];
+    }
+
+    public setLoopMode(mode: LoopMode) {
+        this.loopMode = mode;
+    }
+
+    public getLoopMode(): LoopMode {
+        return this.loopMode;
     }
 }
