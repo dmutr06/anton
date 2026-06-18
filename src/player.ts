@@ -27,7 +27,10 @@ export class Player {
     private currentSession: PlaybackSession | null = null;
     private loopMode: LoopMode = LoopMode.Off;
 
-    constructor() {
+    constructor(
+        public readonly guildId: string,
+        private onDestroy: (guildId: string) => void,
+    ) {
         this.audioPlayer.on(AudioPlayerStatus.Idle, () =>
             this.handlePlaybackIdle(),
         );
@@ -141,7 +144,7 @@ export class Player {
         }
 
         if (this.queue.length === 0) {
-            this.disconnect();
+            this.destroy();
         } else {
             this.next();
         }
@@ -181,9 +184,14 @@ export class Player {
         this.voiceConn = null;
     }
 
+    public destroy() {
+        this.disconnect();
+        this.onDestroy(this.guildId);
+    }
+
     public stop() {
         this.audioPlayer.stop();
-        this.disconnect();
+        this.destroy();
     }
 
     public skip(): boolean {
@@ -205,7 +213,7 @@ export class Player {
         }
 
         if (this.queue.length === 0) {
-            this.disconnect();
+            this.destroy();
         }
         this.next();
     }
@@ -215,7 +223,7 @@ export class Player {
         if (this.queue.length > 0) {
             this.next();
         } else {
-            this.disconnect();
+            this.destroy();
         }
     }
 

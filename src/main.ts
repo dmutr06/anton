@@ -150,13 +150,13 @@ async function main() {
             if (!botChannel) return;
 
             if (newState.id === client.user?.id && !newState.channelId) {
-                player.disconnect();
+                player.destroy();
                 return;
             }
 
             const nonBots = botChannel.members.filter((m) => !m.user.bot);
             if (nonBots.size === 0) {
-                player.disconnect();
+                player.destroy();
             }
         } catch (e) {
             console.error("Error handling voice state update:", e);

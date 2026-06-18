@@ -7,7 +7,7 @@ export class PlayerManager {
         let player = this.players.get(guildId);
         if (player) return player;
 
-        player = new Player();
+        player = new Player(guildId, (id) => this.remove(id));
         this.players.set(guildId, player);
 
         return player;
