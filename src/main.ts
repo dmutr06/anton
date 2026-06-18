@@ -10,6 +10,11 @@ import { OptionType, type Command } from "./command";
 import { SkipCommand } from "./commands/skip";
 import { StopCommand } from "./commands/stop";
 import { PlayCommand } from "./commands/play";
+import { PauseCommand } from "./commands/pause";
+import { ResumeCommand } from "./commands/resume";
+import { NowPlayingCommand } from "./commands/nowplaying";
+import { QueueCommand } from "./commands/queue";
+import { ClearCommand } from "./commands/clear";
 import { PlayerManager } from "./playerManager";
 import { SoundcloudProvider } from "./soundcloud";
 import { YtdlpProvider } from "./ytdlp";
@@ -32,7 +37,6 @@ export function optionTypeToDiscordType(
 
 function commandsToApplicationCommandsData(commands: Command[]) {
     return commands.map((cmd) => {
-        console.debug(`${cmd.name}: ${cmd.autocomplete}`);
         const opts = Object.entries(cmd.options);
         return {
             name: cmd.name,
@@ -83,6 +87,11 @@ async function main() {
         }),
         new StopCommand({ playerManager }),
         new SkipCommand({ playerManager }),
+        new PauseCommand({ playerManager }),
+        new ResumeCommand({ playerManager }),
+        new NowPlayingCommand({ playerManager }),
+        new QueueCommand({ playerManager }),
+        new ClearCommand({ playerManager }),
     ];
 
     client.on(Events.ClientReady, async (client) => {

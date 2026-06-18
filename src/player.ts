@@ -145,6 +145,7 @@ export class Player {
             const resource = createAudioResource(Readable.from(ffmpeg.stdout), {
                 inputType: StreamType.OggOpus,
             });
+
             this.voiceConn?.subscribe(this.audioPlayer);
             this.audioPlayer.play(resource);
 
@@ -244,5 +245,29 @@ export class Player {
             return true;
         }
         return false;
+    }
+
+    public getQueue(): TrackContext[] {
+        return this.queue;
+    }
+
+    public getCurrentTrack(): TrackContext | null {
+        return this.currentTrack;
+    }
+
+    public pause(): boolean {
+        return this.audioPlayer.pause();
+    }
+
+    public resume(): boolean {
+        return this.audioPlayer.unpause();
+    }
+
+    public isPaused(): boolean {
+        return this.audioPlayer.state.status === AudioPlayerStatus.Paused;
+    }
+
+    public clearQueue() {
+        this.queue = [];
     }
 }
