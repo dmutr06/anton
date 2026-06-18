@@ -1,0 +1,32 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.TS_IP }}
+          username: ${{ secrets.TS_USER }}
+          key: ${{ secrets.TS_PRIVATE_KEY }}
+          script: |
+            cd ~/anton
+            git pull origin master
+            bun install
+            bun run build
+            pm2 restart anton
