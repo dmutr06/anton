@@ -27,6 +27,7 @@ jobs:
           script: |
             cd ~/anton
             git pull origin master
-            bun install
-            bun run build
-            pm2 restart anton
+            docker build -t anton-bot .
+            docker stop anton-bot || true
+            docker rm anton-bot || true
+            docker run -d --name anton-bot --env-file .env anton-bot
