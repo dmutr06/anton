@@ -1,25 +1,49 @@
-import { createCommand } from "../command";
-import type { PlayerManager } from "../playerManager";
-import { validateVoice } from "../utils/voice";
+import {
+    type ChatInputCommandInteraction,
+    MessageFlags,
+    SlashCommandBuilder,
+} from "discord.js";
+import type { Command } from "../bot/command";
+import { type PlaybackControl, PlaybackError } from "../playback/playback";
 
-export type StopCommandDeps = {
-    playerManager: PlayerManager;
-};
+export class StopCommand implements Command {
+    readonly data = new SlashCommandBuilder()
+        .setName("stop")
+        .setDescription("Stop playback and clear the queue");
 
-export const StopCommand = createCommand(
-    "stop",
-    "stop playing and clear queue",
-    {},
-    async (interaction, _, { playerManager }: StopCommandDeps) => {
-        const player = playerManager.getOrCreate(interaction.guildId);
-        if (!(await validateVoice(interaction, player))) return;
-        if (!player) {
-            await interaction.reply("Nothing to stop");
+    constructor(private readonly playback: PlaybackControl) {}
+
+    async execute(
+        interaction: ChatInputCommandInteraction<"cached">,
+    ): Promise<void> {
+        const voiceChannelId = interaction.member.voice.channelId;
+
+        if (!voiceChannelId) {
+            await interaction.reply({
+                content: "You must be in a voice channel to use this command.",
+                flags: MessageFlags.Ephemeral,
+            });
             return;
         }
 
-        player.stop();
+        try {
+            const stopped = this.playback.stop(
+                interaction.guildId,
+                voiceChannelId,
+            );
+            await interaction.reply({
+                content: stopped
+                    ? "Stopped playback and cleared the queue."
+                    : "Nothing is playing.",
+                flags: stopped ? undefined : MessageFlags.Ephemeral,
+            });
+        } catch (error) {
+            if (!(error instanceof PlaybackError)) throw error;
 
-        await interaction.reply("Stopped");
-    },
-);
+            await interaction.reply({
+                content: error.message,
+                flags: MessageFlags.Ephemeral,
+            });
+        }
+    }
+}

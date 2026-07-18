@@ -13,6 +13,10 @@ A voice-capable Discord music bot built with Bun and TypeScript, utilizing `ffmp
    - `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET`: Optional Spotify API credentials (used for Spotify playback).
    - `SOUNDCLOUD_CLIENT_ID`: Optional SoundCloud client ID.
    - `GENIUS_ACCESS_TOKEN`: Optional Genius access token (used for looking up lyrics).
+   - `MAX_PLAYLIST_TRACKS`: Maximum tracks accepted from one playlist. Defaults to `100`.
+   - `MAX_QUEUE_TRACKS`: Maximum tracks stored per guild. Defaults to `200`.
+   - `LOG_LEVEL`: `debug`, `info`, `warn`, or `error`. Defaults to `info`.
+   - `LOG_PRETTY`: Enables readable development logs. Defaults to `false`.
 
 ---
 

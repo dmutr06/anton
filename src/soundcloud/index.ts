@@ -1,4 +1,11 @@
-export * from "./soundcloud.api";
-export * from "./soundcloud.errors";
-export * from "./soundcloud.provider";
-export * from "./soundcloud.schemas";
+export {
+    SoundCloudClient,
+    type SoundCloudClientConfig,
+    type SoundCloudFetch,
+} from "./client";
+export {
+    SoundCloudError,
+    SoundCloudRequestError,
+    SoundCloudValidationError,
+} from "./errors";
+export { SoundCloudProvider } from "./provider";

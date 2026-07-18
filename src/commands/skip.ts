@@ -1,27 +1,49 @@
-import { createCommand } from "../command";
-import type { PlayerManager } from "../playerManager";
-import { validateVoice } from "../utils/voice";
+import {
+    type ChatInputCommandInteraction,
+    MessageFlags,
+    SlashCommandBuilder,
+} from "discord.js";
+import type { Command } from "../bot/command";
+import { type PlaybackControl, PlaybackError } from "../playback/playback";
 
-export type SkipCommandDeps = {
-    playerManager: PlayerManager;
-};
+export class SkipCommand implements Command {
+    readonly data = new SlashCommandBuilder()
+        .setName("skip")
+        .setDescription("Skip the current track");
 
-export const SkipCommand = createCommand(
-    "skip",
-    "skip current track",
-    {},
-    async (interaction, _, { playerManager }: SkipCommandDeps) => {
-        const player = playerManager.getOrCreate(interaction.guildId);
-        if (!(await validateVoice(interaction, player))) return;
-        if (!player) {
-            await interaction.reply("Not playing anything");
+    constructor(private readonly playback: PlaybackControl) {}
+
+    async execute(
+        interaction: ChatInputCommandInteraction<"cached">,
+    ): Promise<void> {
+        const voiceChannelId = interaction.member.voice.channelId;
+
+        if (!voiceChannelId) {
+            await interaction.reply({
+                content: "You must be in a voice channel to use this command.",
+                flags: MessageFlags.Ephemeral,
+            });
             return;
         }
 
-        if (player.skip()) {
-            await interaction.reply("Skipped");
-        } else {
-            await interaction.reply("Nothing to skip");
+        try {
+            const skipped = this.playback.skip(
+                interaction.guildId,
+                voiceChannelId,
+            );
+            await interaction.reply({
+                content: skipped
+                    ? "Skipped the current track."
+                    : "Nothing is playing.",
+                flags: skipped ? undefined : MessageFlags.Ephemeral,
+            });
+        } catch (error) {
+            if (!(error instanceof PlaybackError)) throw error;
+
+            await interaction.reply({
+                content: error.message,
+                flags: MessageFlags.Ephemeral,
+            });
         }
-    },
-);
+    }
+}

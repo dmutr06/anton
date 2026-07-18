@@ -1,35 +1,32 @@
-import { EmbedBuilder, MessageFlags } from "discord.js";
-import { createCommand } from "../command";
-import type { PlayerManager } from "../playerManager";
+import {
+    type ChatInputCommandInteraction,
+    EmbedBuilder,
+    MessageFlags,
+    SlashCommandBuilder,
+} from "discord.js";
+import type { Command } from "../bot/command";
+import type { QueueReader, QueueTrack } from "../music/queue";
+import { formatDuration } from "../presentation/duration";
 
-export type QueueCommandDeps = {
-    playerManager: PlayerManager;
-};
+const MAX_VISIBLE_TRACKS = 10;
 
-function formatDuration(seconds: number): string {
-    if (seconds <= 0) return "00:00";
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const remainingSeconds = Math.floor(seconds % 60);
-    const parts: string[] = [];
-    if (hours > 0) {
-        parts.push(hours.toString().padStart(2, "0"));
-    }
-    parts.push(minutes.toString().padStart(2, "0"));
-    parts.push(remainingSeconds.toString().padStart(2, "0"));
-    return parts.join(":");
+function formatTrack(track: QueueTrack): string {
+    return `[${track.title}](${track.url}) | \`${formatDuration(track.duration)}\``;
 }
 
-export const QueueCommand = createCommand(
-    "queue",
-    "show the current track queue",
-    {},
-    async (interaction, _, { playerManager }: QueueCommandDeps) => {
-        const player = playerManager.getOrCreate(interaction.guildId);
-        const currentTrack = player.getCurrentTrack();
-        const queue = player.getQueue();
+export class QueueCommand implements Command {
+    readonly data = new SlashCommandBuilder()
+        .setName("queue")
+        .setDescription("Show the current track queue");
 
-        if (!currentTrack && queue.length === 0) {
+    constructor(private readonly queueReader: QueueReader) {}
+
+    async execute(
+        interaction: ChatInputCommandInteraction<"cached">,
+    ): Promise<void> {
+        const queue = await this.queueReader.getQueue(interaction.guildId);
+
+        if (!queue.current && queue.upcoming.length === 0) {
             await interaction.reply({
                 content: "The queue is currently empty",
                 flags: MessageFlags.Ephemeral,
@@ -37,46 +34,39 @@ export const QueueCommand = createCommand(
             return;
         }
 
-        const embed = new EmbedBuilder()
-            .setColor("#3498DB")
-            .setTitle("Music Queue");
+        const description: string[] = [];
 
-        const descriptionParts: string[] = [];
-
-        if (currentTrack) {
-            descriptionParts.push(
-                `**Now Playing:**\n[${currentTrack.track.title}](${currentTrack.track.url ?? ""}) | \`${formatDuration(currentTrack.track.duration)}\`\n`,
+        if (queue.current) {
+            description.push(
+                `**Now Playing:**\n${formatTrack(queue.current)}\n`,
             );
         }
 
-        if (queue.length > 0) {
-            descriptionParts.push("**Up Next:**");
-            const tracksToShow = queue.slice(0, 10);
-            for (let i = 0; i < tracksToShow.length; i++) {
-                const trackCtx = tracksToShow[i];
-                if (trackCtx) {
-                    descriptionParts.push(
-                        `${i + 1}. [${trackCtx.track.title}](${trackCtx.track.url ?? ""}) | \`${formatDuration(trackCtx.track.duration)}\``,
-                    );
-                }
+        if (queue.upcoming.length > 0) {
+            description.push("**Up Next:**");
+
+            for (const [index, track] of queue.upcoming
+                .slice(0, MAX_VISIBLE_TRACKS)
+                .entries()) {
+                description.push(`${index + 1}. ${formatTrack(track)}`);
             }
 
-            if (queue.length > 10) {
-                descriptionParts.push(
-                    `\n*And ${queue.length - 10} more track(s)...*`,
-                );
+            const hiddenTracks = queue.upcoming.length - MAX_VISIBLE_TRACKS;
+            if (hiddenTracks > 0) {
+                description.push(`\n*And ${hiddenTracks} more track(s)...*`);
             }
         } else {
-            descriptionParts.push("No more tracks enqueued.");
+            description.push("No more tracks enqueued.");
         }
 
-        embed.setDescription(descriptionParts.join("\n"));
-
-        const loopMode = player.getLoopMode();
-        embed.setFooter({
-            text: `Loop Mode: ${loopMode.toUpperCase()} | Queue Size: ${queue.length} track(s)`,
-        });
+        const embed = new EmbedBuilder()
+            .setColor("#3498DB")
+            .setTitle("Music Queue")
+            .setDescription(description.join("\n"))
+            .setFooter({
+                text: `Loop Mode: ${queue.loopMode.toUpperCase()} | Queue Size: ${queue.upcoming.length} track(s)`,
+            });
 
         await interaction.reply({ embeds: [embed] });
-    },
-);
+    }
+}
