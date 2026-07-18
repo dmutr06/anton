@@ -230,4 +230,32 @@ describe("SoundCloudProvider", () => {
             expect(resolved).toBeNull();
         }
     });
+
+    test("maps publisher metadata for cross-provider matching", async () => {
+        const fetcher: SoundCloudFetch = async () =>
+            Response.json({
+                ...rawTrack,
+                publisher_metadata: {
+                    artist: "Гражданская Оборона",
+                    album_title: "Русское поле экспериментов",
+                    isrc: "RUAAA0000001",
+                    release_title: "Чужое",
+                },
+            });
+        const provider = new SoundCloudProvider(
+            new SoundCloudClient({ clientId: "client-id" }, fetcher),
+        );
+
+        const track = await provider.resolveIdentifier(
+            "soundcloud:tracks:123",
+            new AbortController().signal,
+        );
+
+        expect(track?.match).toEqual({
+            title: "Чужое",
+            artist: "Гражданская Оборона",
+            album: "Русское поле экспериментов",
+            isrc: "RUAAA0000001",
+        });
+    });
 });

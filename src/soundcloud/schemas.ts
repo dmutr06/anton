@@ -40,6 +40,15 @@ export const soundCloudTrackSchema = z.object({
     policy: z.string().optional(),
     artwork_url: z.string().url().nullable().optional(),
     user: soundCloudUserSchema.optional(),
+    publisher_metadata: z
+        .object({
+            artist: z.string().nullable().optional(),
+            album_title: z.string().nullable().optional(),
+            isrc: z.string().nullable().optional(),
+            release_title: z.string().nullable().optional(),
+        })
+        .nullable()
+        .optional(),
     media: z.object({
         transcodings: z.array(soundCloudTranscodingSchema),
     }),

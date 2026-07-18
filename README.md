@@ -10,7 +10,7 @@ A voice-capable Discord music bot built with Bun and TypeScript, utilizing `ffmp
    ```
 2. Open `.env` and fill in your Discord Bot Token and API credentials:
    - `TOKEN`: Your Discord bot token.
-   - `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET`: Optional Spotify API credentials (used for Spotify playback).
+   - `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET`: Optional Spotify metadata credentials. Both must be provided to enable Spotify URLs.
    - `SOUNDCLOUD_CLIENT_ID`: Optional SoundCloud client ID.
    - `GENIUS_ACCESS_TOKEN`: Optional Genius access token (used for looking up lyrics).
    - `MAX_PLAYLIST_TRACKS`: Maximum tracks accepted from one playlist. Defaults to `100`.

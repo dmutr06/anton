@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { MusicService, PlayMusicError } from "../../src/music/play";
 import type { Playlist } from "../../src/music/playlist";
-import type {
-    AudioSource,
-    ResolvedMedia,
-    SearchableMusicProvider,
-    TrendingMusicProvider,
+import {
+    type AudioSource,
+    MusicProviderError,
+    type ResolvedMedia,
+    type SearchableMusicProvider,
+    type TrendingMusicProvider,
 } from "../../src/music/provider";
 import { MusicProviderRegistry } from "../../src/music/providerRegistry";
 import type { Track } from "../../src/music/track";
@@ -154,6 +155,31 @@ describe("MusicService", () => {
             .catch((cause: unknown) => cause);
 
         expect(error).toBeInstanceOf(PlayMusicError);
+    });
+
+    test("turns provider failures into command errors", async () => {
+        const provider = new TestProvider();
+        provider.resolveUrl = async () => {
+            throw new MusicProviderError("Provider is unavailable");
+        };
+        const providers = new MusicProviderRegistry([provider], "test");
+        const music = new MusicService(providers, new TestPlayback());
+
+        const error = await music
+            .enqueue(
+                {
+                    query: "https://music.test/track",
+                    guildId: "guild",
+                    voiceChannelId: "voice",
+                    textChannelId: "text",
+                    requestedByUserId: "user",
+                },
+                new AbortController().signal,
+            )
+            .catch((cause: unknown) => cause);
+
+        expect(error).toBeInstanceOf(PlayMusicError);
+        expect((error as Error).message).toBe("Provider is unavailable");
     });
 
     test("rejects playlists larger than the configured limit", async () => {

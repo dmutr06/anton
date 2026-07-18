@@ -1,4 +1,5 @@
 import { type Playback, PlaybackError } from "../playback/playback";
+import { MusicProviderError, type ResolvedMedia } from "./provider";
 import type { MusicCatalog } from "./providerRegistry";
 import type { Track } from "./track";
 
@@ -62,7 +63,16 @@ export class MusicService implements PlayMusic {
         request: PlayRequest,
         signal: AbortSignal,
     ): Promise<PlayResult> {
-        const resolved = await this.providers.resolve(request.query, signal);
+        let resolved: ResolvedMedia | null;
+
+        try {
+            resolved = await this.providers.resolve(request.query, signal);
+        } catch (error) {
+            if (error instanceof MusicProviderError) {
+                throw new PlayMusicError(error.message, { cause: error });
+            }
+            throw error;
+        }
 
         if (!resolved) {
             throw new PlayMusicError(

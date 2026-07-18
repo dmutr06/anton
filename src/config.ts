@@ -3,11 +3,17 @@ import type { LogLevel } from "./lib/logger";
 export type AppConfig = {
     discordToken: string;
     soundCloudClientId: string;
+    spotify: SpotifyConfig | null;
     registerCommands: boolean;
     maxPlaylistTracks: number;
     maxQueueTracks: number;
     logLevel: LogLevel;
     logPretty: boolean;
+};
+
+export type SpotifyConfig = {
+    clientId: string;
+    clientSecret: string;
 };
 
 const DEFAULT_MAX_PLAYLIST_TRACKS = 100;
@@ -33,6 +39,7 @@ export function loadConfig(
     return {
         discordToken,
         soundCloudClientId,
+        spotify: readSpotifyConfig(environment),
         registerCommands: args.includes("--register"),
         maxPlaylistTracks: readPositiveInteger(
             environment,
@@ -47,6 +54,22 @@ export function loadConfig(
         logLevel: readLogLevel(environment),
         logPretty: readBoolean(environment, "LOG_PRETTY", false),
     };
+}
+
+function readSpotifyConfig(
+    environment: Readonly<Record<string, string | undefined>>,
+): SpotifyConfig | null {
+    const clientId = environment.SPOTIFY_CLIENT_ID?.trim();
+    const clientSecret = environment.SPOTIFY_CLIENT_SECRET?.trim();
+
+    if (!clientId && !clientSecret) return null;
+    if (!clientId || !clientSecret) {
+        throw new ConfigError(
+            "SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET must be provided together",
+        );
+    }
+
+    return { clientId, clientSecret };
 }
 
 function readLogLevel(

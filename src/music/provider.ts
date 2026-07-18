@@ -1,6 +1,13 @@
 import type { Playlist } from "./playlist";
 import type { Track } from "./track";
 
+export class MusicProviderError extends Error {
+    constructor(message: string, options?: ErrorOptions) {
+        super(message, options);
+        this.name = "MusicProviderError";
+    }
+}
+
 export type ResolvedMedia =
     | { kind: "track"; track: Track }
     | { kind: "playlist"; playlist: Playlist };

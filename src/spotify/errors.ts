@@ -1,30 +1,30 @@
 import type { ZodError } from "zod";
 import { MusicProviderError } from "../music/provider";
 
-export class SoundCloudError extends MusicProviderError {
+export class SpotifyError extends MusicProviderError {
     constructor(message: string, options?: ErrorOptions) {
         super(message, options);
-        this.name = "SoundCloudError";
+        this.name = "SpotifyError";
     }
 }
 
-export class SoundCloudRequestError extends SoundCloudError {
+export class SpotifyRequestError extends SpotifyError {
     constructor(
         message: string,
         readonly status: number,
         readonly statusText: string,
     ) {
         super(`${message} (${status} ${statusText})`);
-        this.name = "SoundCloudRequestError";
+        this.name = "SpotifyRequestError";
     }
 }
 
-export class SoundCloudValidationError extends SoundCloudError {
+export class SpotifyValidationError extends SpotifyError {
     constructor(
         message: string,
         readonly validationError: ZodError,
     ) {
         super(message, { cause: validationError });
-        this.name = "SoundCloudValidationError";
+        this.name = "SpotifyValidationError";
     }
 }

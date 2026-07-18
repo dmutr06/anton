@@ -7,10 +7,13 @@ const REDACTED_PATHS = [
     "discordToken",
     "soundCloudClientId",
     "clientId",
+    "clientSecret",
+    "spotifyClientSecret",
     "authorization",
     "headers.authorization",
     "*.token",
     "*.clientId",
+    "*.clientSecret",
     "*.authorization",
 ];
 

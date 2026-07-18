@@ -10,10 +10,12 @@ import type { Logger } from "./lib/logger";
 import { createPinoLogger } from "./lib/pinoLogger";
 import { MusicService } from "./music/play";
 import { MusicProviderRegistry } from "./music/providerRegistry";
+import { SearchAudioSourceResolver } from "./music/searchAudioSource";
 import { DiscordPlaybackManager } from "./playback/discordPlayback";
 import { DiscordVoiceRuntime } from "./playback/discordVoiceRuntime";
 import { DiscordPlaybackNotifier } from "./playback/playbackNotifier";
 import { SoundCloudClient, SoundCloudProvider } from "./soundcloud";
+import { SpotifyClient, SpotifyProvider } from "./spotify";
 
 async function main(config: AppConfig, logger: Logger): Promise<void> {
     logger.info("application.starting", {
@@ -27,7 +29,19 @@ async function main(config: AppConfig, logger: Logger): Promise<void> {
     const soundCloud = new SoundCloudProvider(
         new SoundCloudClient({ clientId: config.soundCloudClientId }),
     );
-    const providers = new MusicProviderRegistry([soundCloud], soundCloud.id);
+    const spotify = config.spotify
+        ? new SpotifyProvider(
+              new SpotifyClient(config.spotify),
+              new SearchAudioSourceResolver([soundCloud]),
+          )
+        : null;
+    const providers = new MusicProviderRegistry(
+        spotify ? [soundCloud, spotify] : [soundCloud],
+        soundCloud.id,
+    );
+    logger.info("spotify.provider_configured", {
+        enabled: spotify !== null,
+    });
     const playback = new DiscordPlaybackManager({
         client,
         sources: providers,

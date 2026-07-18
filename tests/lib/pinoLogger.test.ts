@@ -43,6 +43,7 @@ describe("PinoLogger", () => {
             request: {
                 authorization: "Bearer secret",
                 clientId: "nested-secret",
+                clientSecret: "nested-secret",
             },
         });
 
@@ -52,6 +53,7 @@ describe("PinoLogger", () => {
         expect(entry.soundCloudClientId).toBe("[Redacted]");
         expect(request.authorization).toBe("[Redacted]");
         expect(request.clientId).toBe("[Redacted]");
+        expect(request.clientSecret).toBe("[Redacted]");
     });
 
     test("serializes errors", () => {

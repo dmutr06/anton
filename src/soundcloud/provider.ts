@@ -6,7 +6,7 @@ import type {
     SearchableMusicProvider,
     TrendingMusicProvider,
 } from "../music/provider";
-import type { Track } from "../music/track";
+import type { Track, TrackMatchMetadata } from "../music/track";
 import type { SoundCloudClient } from "./client";
 import type { SoundCloudPlaylistData, SoundCloudTrackData } from "./schemas";
 
@@ -171,6 +171,8 @@ export class SoundCloudProvider
 
         if (!transcoding) return null;
 
+        const match = this.toMatchMetadata(track);
+
         return {
             id: track.urn,
             title: track.title,
@@ -179,11 +181,28 @@ export class SoundCloudProvider
             url: track.permalink_url,
             thumbnail: track.artwork_url ?? track.user?.avatar_url ?? undefined,
             provider: this.id,
+            ...(match ? { match } : {}),
             source: {
                 providerId: this.id,
                 resourceId: transcoding.url,
             },
         };
+    }
+
+    private toMatchMetadata(
+        track: SoundCloudTrackData,
+    ): TrackMatchMetadata | undefined {
+        const metadata = track.publisher_metadata;
+        if (!metadata) return undefined;
+
+        const match = {
+            title: metadata.release_title ?? undefined,
+            artist: metadata.artist ?? undefined,
+            album: metadata.album_title ?? undefined,
+            isrc: metadata.isrc ?? undefined,
+        };
+
+        return Object.values(match).some(Boolean) ? match : undefined;
     }
 
     private normalizeUrl(value: string): string | null {

@@ -14,6 +14,7 @@ describe("loadConfig", () => {
         ).toEqual({
             discordToken: "token",
             soundCloudClientId: "soundcloud-client",
+            spotify: null,
             registerCommands: true,
             maxPlaylistTracks: 100,
             maxQueueTracks: 200,
@@ -39,6 +40,38 @@ describe("loadConfig", () => {
         expect(config.maxQueueTracks).toBe(50);
         expect(config.logLevel).toBe("debug");
         expect(config.logPretty).toBe(true);
+    });
+
+    test("loads optional Spotify credentials", () => {
+        const config = loadConfig(
+            {
+                TOKEN: "token",
+                SOUNDCLOUD_CLIENT_ID: "soundcloud-client",
+                SPOTIFY_CLIENT_ID: "spotify-client",
+                SPOTIFY_CLIENT_SECRET: "spotify-secret",
+            },
+            [],
+        );
+
+        expect(config.spotify).toEqual({
+            clientId: "spotify-client",
+            clientSecret: "spotify-secret",
+        });
+    });
+
+    test("rejects incomplete Spotify credentials", () => {
+        expect(() =>
+            loadConfig(
+                {
+                    TOKEN: "token",
+                    SOUNDCLOUD_CLIENT_ID: "soundcloud-client",
+                    SPOTIFY_CLIENT_ID: "spotify-client",
+                },
+                [],
+            ),
+        ).toThrow(
+            "SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET must be provided together",
+        );
     });
 
     test("rejects invalid logging configuration", () => {
