@@ -40,7 +40,7 @@ export function createPlayResultEmbed(result: PlayResult): EmbedBuilder {
         .addFields(
             {
                 name: "Duration",
-                value: `\`${formatDuration(track.duration)}\``,
+                value: `\`${track.isLive ? "LIVE" : formatDuration(track.duration)}\``,
                 inline: true,
             },
             {

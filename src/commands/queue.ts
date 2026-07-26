@@ -11,7 +11,8 @@ import { formatDuration } from "../presentation/duration";
 const MAX_VISIBLE_TRACKS = 10;
 
 function formatTrack(track: QueueTrack): string {
-    return `[${track.title}](${track.url}) | \`${formatDuration(track.duration)}\``;
+    const duration = track.isLive ? "LIVE" : formatDuration(track.duration);
+    return `[${track.title}](${track.url}) | \`${duration}\``;
 }
 
 export class QueueCommand implements Command {

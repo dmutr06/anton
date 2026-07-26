@@ -14,6 +14,7 @@ describe("loadConfig", () => {
         ).toEqual({
             discordToken: "token",
             soundCloudClientId: "soundcloud-client",
+            ytdlpPath: "yt-dlp",
             spotify: null,
             registerCommands: true,
             maxPlaylistTracks: 100,
@@ -57,6 +58,19 @@ describe("loadConfig", () => {
             clientId: "spotify-client",
             clientSecret: "spotify-secret",
         });
+    });
+
+    test("loads a custom yt-dlp executable path", () => {
+        const config = loadConfig(
+            {
+                TOKEN: "token",
+                SOUNDCLOUD_CLIENT_ID: "soundcloud-client",
+                YTDLP_PATH: " /opt/bin/yt-dlp ",
+            },
+            [],
+        );
+
+        expect(config.ytdlpPath).toBe("/opt/bin/yt-dlp");
     });
 
     test("rejects incomplete Spotify credentials", () => {

@@ -1,0 +1,83 @@
+import { describe, expect, test } from "bun:test";
+import type { YtdlpCatalogClient } from "../../src/ytdlp/client";
+import { YtdlpProvider } from "../../src/ytdlp/provider";
+
+const entry = {
+    id: "abc123",
+    title: "Track",
+    uploader: "Artist",
+    duration: 125,
+    webpage_url: "https://www.youtube.com/watch?v=abc123",
+    thumbnail: "https://img.youtube.com/vi/abc123/0.jpg",
+    is_live: true,
+    live_status: "is_live",
+};
+
+class TestClient implements YtdlpCatalogClient {
+    async search() {
+        return [entry];
+    }
+
+    async resolve() {
+        return entry;
+    }
+
+    async getStreamUrl(url: string): Promise<string> {
+        return `https://media.youtube.test/${encodeURIComponent(url)}`;
+    }
+}
+
+describe("YtdlpProvider", () => {
+    test("recognizes YouTube URLs and rejects lookalike hosts", () => {
+        const provider = new YtdlpProvider(new TestClient());
+
+        expect(provider.supportsUrl(entry.webpage_url)).toBe(true);
+        expect(
+            provider.supportsUrl("https://youtube.com.evil.test/watch"),
+        ).toBe(false);
+        expect(provider.supportsIdentifier("ytdlp:video:abc123")).toBe(false);
+    });
+
+    test("maps search results and resolves direct URLs", async () => {
+        const provider = new YtdlpProvider(new TestClient());
+
+        const searchResults = await provider.search(
+            "track",
+            new AbortController().signal,
+        );
+        const resolved = await provider.resolveUrl(
+            entry.webpage_url,
+            new AbortController().signal,
+        );
+
+        expect(searchResults[0]).toMatchObject({
+            id: "ytdlp:video:abc123",
+            title: "Track",
+            author: "Artist",
+            duration: 125,
+            isLive: true,
+            provider: "ytdlp",
+            source: {
+                providerId: "ytdlp",
+                resourceId: entry.webpage_url,
+            },
+        });
+        expect(resolved?.kind).toBe("track");
+    });
+
+    test("resolves a fresh stream URL for a mapped track", async () => {
+        const provider = new YtdlpProvider(new TestClient());
+        const track = (await provider.resolveUrl(
+            entry.webpage_url,
+            new AbortController().signal,
+        )) as { kind: "track"; track: import("../../src/music/track").Track };
+
+        const source = await provider.getAudioSource(
+            track.track,
+            new AbortController().signal,
+        );
+
+        expect(source.kind).toBe("url");
+        expect(source.url).toContain("media.youtube.test");
+    });
+});

@@ -3,6 +3,7 @@ import type { LogLevel } from "./lib/logger";
 export type AppConfig = {
     discordToken: string;
     soundCloudClientId: string;
+    ytdlpPath: string;
     spotify: SpotifyConfig | null;
     registerCommands: boolean;
     maxPlaylistTracks: number;
@@ -18,6 +19,7 @@ export type SpotifyConfig = {
 
 const DEFAULT_MAX_PLAYLIST_TRACKS = 100;
 const DEFAULT_MAX_QUEUE_TRACKS = 200;
+const DEFAULT_YTDLP_PATH = "yt-dlp";
 
 export class ConfigError extends Error {
     constructor(message: string) {
@@ -39,6 +41,7 @@ export function loadConfig(
     return {
         discordToken,
         soundCloudClientId,
+        ytdlpPath: readOptional(environment, "YTDLP_PATH", DEFAULT_YTDLP_PATH),
         spotify: readSpotifyConfig(environment),
         registerCommands: args.includes("--register"),
         maxPlaylistTracks: readPositiveInteger(
@@ -54,6 +57,14 @@ export function loadConfig(
         logLevel: readLogLevel(environment),
         logPretty: readBoolean(environment, "LOG_PRETTY", false),
     };
+}
+
+function readOptional(
+    environment: Readonly<Record<string, string | undefined>>,
+    name: string,
+    defaultValue: string,
+): string {
+    return environment[name]?.trim() || defaultValue;
 }
 
 function readSpotifyConfig(

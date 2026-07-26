@@ -82,6 +82,14 @@ export class DiscordVoiceRuntime implements VoiceRuntime {
         this.player(player).play(resource);
     }
 
+    pause(player: VoicePlayerHandle): boolean {
+        return this.player(player).pause();
+    }
+
+    resume(player: VoicePlayerHandle): boolean {
+        return this.player(player).unpause();
+    }
+
     stop(player: VoicePlayerHandle): boolean {
         return this.player(player).stop(true);
     }

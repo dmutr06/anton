@@ -166,7 +166,7 @@ export class MusicService implements PlayMusic {
 
     private toTrackSuggestion(track: Track): PlaySuggestion {
         return {
-            name: `${track.author} - ${track.title} (${this.formatDuration(track.duration)})`,
+            name: `${track.author} - ${track.title} (${track.isLive ? "LIVE" : this.formatDuration(track.duration)})`,
             value: track.id,
         };
     }

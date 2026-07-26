@@ -1,8 +1,12 @@
 import { Client, GatewayIntentBits, REST } from "discord.js";
 import { CommandRegistry } from "./bot/commandRegistry";
 import { DiscordBot } from "./bot/discordBot";
+import { ClearCommand } from "./commands/clear";
+import { LoopCommand } from "./commands/loop";
+import { PauseCommand } from "./commands/pause";
 import { PlayCommand } from "./commands/play";
 import { QueueCommand } from "./commands/queue";
+import { ResumeCommand } from "./commands/resume";
 import { SkipCommand } from "./commands/skip";
 import { StopCommand } from "./commands/stop";
 import { type AppConfig, loadConfig } from "./config";
@@ -14,8 +18,12 @@ import { SearchAudioSourceResolver } from "./music/searchAudioSource";
 import { DiscordPlaybackManager } from "./playback/discordPlayback";
 import { DiscordVoiceRuntime } from "./playback/discordVoiceRuntime";
 import { DiscordPlaybackNotifier } from "./playback/playbackNotifier";
-import { SoundCloudClient, SoundCloudProvider } from "./soundcloud";
-import { SpotifyClient, SpotifyProvider } from "./spotify";
+import { SoundCloudClient } from "./soundcloud/client";
+import { SoundCloudProvider } from "./soundcloud/provider";
+import { SpotifyClient } from "./spotify/client";
+import { SpotifyProvider } from "./spotify/provider";
+import { YtdlpClient } from "./ytdlp/client";
+import { YtdlpProvider } from "./ytdlp/provider";
 
 async function main(config: AppConfig, logger: Logger): Promise<void> {
     logger.info("application.starting", {
@@ -29,6 +37,9 @@ async function main(config: AppConfig, logger: Logger): Promise<void> {
     const soundCloud = new SoundCloudProvider(
         new SoundCloudClient({ clientId: config.soundCloudClientId }),
     );
+    const ytdlp = new YtdlpProvider(
+        new YtdlpClient({ executable: config.ytdlpPath }),
+    );
     const spotify = config.spotify
         ? new SpotifyProvider(
               new SpotifyClient(config.spotify),
@@ -36,9 +47,12 @@ async function main(config: AppConfig, logger: Logger): Promise<void> {
           )
         : null;
     const providers = new MusicProviderRegistry(
-        spotify ? [soundCloud, spotify] : [soundCloud],
+        spotify ? [soundCloud, ytdlp, spotify] : [soundCloud, ytdlp],
         soundCloud.id,
     );
+    logger.info("ytdlp.provider_configured", {
+        executable: config.ytdlpPath,
+    });
     logger.info("spotify.provider_configured", {
         enabled: spotify !== null,
     });
@@ -59,6 +73,10 @@ async function main(config: AppConfig, logger: Logger): Promise<void> {
     const commands = new CommandRegistry([
         new PlayCommand(music),
         new QueueCommand(playback),
+        new PauseCommand(playback),
+        new ResumeCommand(playback),
+        new ClearCommand(playback),
+        new LoopCommand(playback),
         new SkipCommand(playback),
         new StopCommand(playback),
     ]);

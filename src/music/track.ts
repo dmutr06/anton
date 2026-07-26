@@ -11,6 +11,7 @@ export type Track = {
     title: string;
     author: string;
     duration: number;
+    isLive?: boolean;
     url: string;
     thumbnail?: string;
     provider: string;

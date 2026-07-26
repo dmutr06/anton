@@ -1,8 +1,5 @@
-import {
-    SoundCloudError,
-    SoundCloudRequestError,
-    SoundCloudValidationError,
-} from "./errors";
+import { MusicProviderError } from "../music/provider";
+import { SoundCloudRequestError, SoundCloudValidationError } from "./errors";
 import {
     type SoundCloudPlaylistData,
     type SoundCloudTrackData,
@@ -250,7 +247,7 @@ export class SoundCloudClient {
             url.protocol !== "https:" ||
             url.hostname !== this.apiUrl.hostname
         ) {
-            throw new SoundCloudError("Invalid SoundCloud transcoding URL");
+            throw new MusicProviderError("Invalid SoundCloud transcoding URL");
         }
 
         url.searchParams.set("client_id", this.config.clientId);

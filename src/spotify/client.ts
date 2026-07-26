@@ -1,9 +1,6 @@
 import type { ZodType } from "zod";
-import {
-    SpotifyError,
-    SpotifyRequestError,
-    SpotifyValidationError,
-} from "./errors";
+import { MusicProviderError } from "../music/provider";
+import { SpotifyRequestError, SpotifyValidationError } from "./errors";
 import {
     type SpotifyAlbumData,
     type SpotifyPlaylistData,
@@ -82,7 +79,7 @@ export class SpotifyClient implements SpotifyCatalogClient {
         const firstPage = playlist.items ?? playlist.tracks;
 
         if (!firstPage) {
-            throw new SpotifyError(
+            throw new MusicProviderError(
                 "Spotify playlist items are unavailable for this application",
             );
         }
@@ -122,7 +119,7 @@ export class SpotifyClient implements SpotifyCatalogClient {
     ): Promise<unknown> {
         const url = new URL(path, this.apiUrl);
         if (url.origin !== this.apiUrl.origin) {
-            throw new SpotifyError("Invalid Spotify API URL");
+            throw new MusicProviderError("Invalid Spotify API URL");
         }
 
         const response = await this.fetcher(url, {

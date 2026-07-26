@@ -1,9 +1,9 @@
 import type { VoiceBasedChannel } from "discord.js";
 import type { Logger } from "../lib/logger";
 import type { AudioSourceResolver } from "../music/provider";
-import type { QueueSnapshot } from "../music/queue";
+import type { LoopMode, QueueSnapshot } from "../music/queue";
 import type { Track } from "../music/track";
-import { PlaybackError } from "./playback";
+import { type PauseResult, PlaybackError, type ResumeResult } from "./playback";
 import type { PlaybackNotifier } from "./playbackNotifier";
 import type {
     VoiceConnectionHandle,
@@ -30,6 +30,11 @@ export type GuildPlaybackDependencies = {
     onDestroy(): void;
 };
 
+type QueueLoop = {
+    items: PlaybackQueueItem[];
+    nextIndex: number;
+};
+
 export class GuildPlayback {
     private readonly player: VoicePlayerHandle;
     private readonly queue: PlaybackQueueItem[] = [];
@@ -37,6 +42,13 @@ export class GuildPlayback {
     private currentController: AbortController | null = null;
     private connection: VoiceConnectionHandle | null = null;
     private voiceChannelId: string | null = null;
+    private loopMode: LoopMode = "off";
+    private queueLoop: QueueLoop | null = null;
+    private currentLoopIndex: number | null = null;
+    private repeatedTrack: PlaybackQueueItem | null = null;
+    private skipRequested = false;
+    private paused = false;
+    private started = false;
     private advancing = false;
     private destroyed = false;
 
@@ -45,27 +57,8 @@ export class GuildPlayback {
             maxQueueTracks: dependencies.maxQueueTracks,
         });
         this.player = dependencies.voice.createPlayer({
-            idle: () => {
-                const item = this.current;
-                if (item) {
-                    this.dependencies.logger.info("playback.track_ended", {
-                        trackId: item.track.id,
-                    });
-                }
-                this.disposeCurrent();
-                this.scheduleAdvance();
-            },
-            error: (error) => {
-                const item = this.current;
-                this.dependencies.logger.error(
-                    "playback.player_failed",
-                    error,
-                    {
-                        trackId: item?.track.id,
-                    },
-                );
-                if (item) void this.reportPlaybackError(item);
-            },
+            idle: () => this.handleIdle(),
+            error: (error) => this.handlePlayerError(error),
         });
     }
 
@@ -106,7 +99,8 @@ export class GuildPlayback {
         }
 
         if (channelId) this.voiceChannelId = channelId;
-        this.queue.push(...items);
+        if (this.queueLoop) this.queueLoop.items.push(...items);
+        else this.queue.push(...items);
         this.dependencies.logger.info("playback.tracks_enqueued", {
             enqueuedTracks: items.length,
             queueSize: this.size,
@@ -119,8 +113,8 @@ export class GuildPlayback {
     getQueue(): QueueSnapshot {
         return {
             current: this.current?.track ?? null,
-            upcoming: this.queue.map((item) => item.track),
-            loopMode: "off",
+            upcoming: this.upcomingItems.map((item) => item.track),
+            loopMode: this.loopMode,
         };
     }
 
@@ -145,14 +139,98 @@ export class GuildPlayback {
             trackId: this.current.track.id,
         });
 
+        this.skipRequested = true;
         this.currentController?.abort();
 
         if (!this.dependencies.voice.stop(this.player) && !this.advancing) {
+            this.skipRequested = false;
             this.disposeCurrent();
             this.scheduleAdvance();
         }
 
         return true;
+    }
+
+    pause(channelId: string): PauseResult {
+        this.assertVoiceChannel(channelId);
+        if (!this.current) return "nothing_playing";
+        if (this.paused) return "already_paused";
+        if (!this.started) {
+            this.paused = true;
+            return "paused";
+        }
+        if (!this.dependencies.voice.pause(this.player)) {
+            return "nothing_playing";
+        }
+
+        this.paused = true;
+        this.dependencies.logger.info("playback.paused", {
+            trackId: this.current.track.id,
+        });
+        return "paused";
+    }
+
+    resume(channelId: string): ResumeResult {
+        this.assertVoiceChannel(channelId);
+        if (!this.current) return "nothing_playing";
+        if (!this.paused) return "already_playing";
+        if (!this.started) {
+            this.paused = false;
+            return "resumed";
+        }
+        if (!this.dependencies.voice.resume(this.player)) {
+            return "nothing_playing";
+        }
+
+        this.paused = false;
+        this.dependencies.logger.info("playback.resumed", {
+            trackId: this.current.track.id,
+        });
+        return "resumed";
+    }
+
+    clear(channelId: string): number {
+        this.assertVoiceChannel(channelId);
+        const removedTracks = this.queueLoop
+            ? Math.max(0, this.queueLoop.items.length - (this.current ? 1 : 0))
+            : this.queue.length;
+
+        if (this.queueLoop) {
+            this.queueLoop.items = this.current ? [this.current] : [];
+            this.queueLoop.nextIndex = this.current ? 1 : 0;
+            this.currentLoopIndex = this.current ? 0 : null;
+        } else {
+            this.queue.length = 0;
+        }
+
+        this.dependencies.logger.info("playback.queue_cleared", {
+            removedTracks,
+        });
+        return removedTracks;
+    }
+
+    setLoopMode(channelId: string, mode: LoopMode): void {
+        this.assertVoiceChannel(channelId);
+        if (mode === this.loopMode) return;
+
+        if (mode === "queue") {
+            this.queueLoop = {
+                items: this.current
+                    ? [this.current, ...this.queue]
+                    : [...this.queue],
+                nextIndex: this.current ? 1 : 0,
+            };
+            this.currentLoopIndex = this.current ? 0 : null;
+            this.queue.length = 0;
+        } else if (this.queueLoop) {
+            this.queue.push(...this.upcomingItems);
+            this.queueLoop = null;
+            this.currentLoopIndex = null;
+        }
+
+        if (mode !== "track") this.repeatedTrack = null;
+        this.loopMode = mode;
+        this.dependencies.logger.info("playback.loop_mode_changed", { mode });
     }
 
     destroy(
@@ -166,6 +244,8 @@ export class GuildPlayback {
         });
         this.destroyed = true;
         this.queue.length = 0;
+        this.queueLoop = null;
+        this.repeatedTrack = null;
         this.disposeCurrent();
         this.dependencies.voice.stop(this.player);
 
@@ -179,7 +259,14 @@ export class GuildPlayback {
     }
 
     private get size(): number {
-        return this.queue.length + (this.current ? 1 : 0);
+        return this.queueLoop
+            ? this.queueLoop.items.length
+            : this.queue.length + (this.current ? 1 : 0);
+    }
+
+    private get upcomingItems(): readonly PlaybackQueueItem[] {
+        if (!this.queueLoop) return this.queue;
+        return this.queueLoop.items.slice(this.queueLoop.nextIndex);
     }
 
     private scheduleAdvance(): void {
@@ -196,7 +283,7 @@ export class GuildPlayback {
 
         try {
             while (!this.current && !this.destroyed) {
-                const item = this.queue.shift();
+                const item = this.takeNextItem();
 
                 if (!item) {
                     this.destroy("queue_finished");
@@ -227,6 +314,8 @@ export class GuildPlayback {
                         source.url,
                         item.track,
                     );
+                    this.started = true;
+                    if (this.paused) this.dependencies.voice.pause(this.player);
                     this.dependencies.logger.info("playback.track_started", {
                         provider: item.track.provider,
                         trackId: item.track.id,
@@ -239,6 +328,9 @@ export class GuildPlayback {
                             { trackId: item.track.id },
                         );
                         await this.reportPlaybackError(item);
+                        this.removeCurrentFromQueueLoop();
+                    } else {
+                        this.skipRequested = false;
                     }
                     this.disposeCurrent();
                 }
@@ -246,10 +338,90 @@ export class GuildPlayback {
         } finally {
             this.advancing = false;
 
-            if (!this.current && this.queue.length > 0 && !this.destroyed) {
+            if (!this.current && this.hasNextItem && !this.destroyed) {
                 this.scheduleAdvance();
             }
         }
+    }
+
+    private get hasNextItem(): boolean {
+        return Boolean(
+            this.repeatedTrack ||
+                this.queue.length > 0 ||
+                (this.queueLoop && this.queueLoop.items.length > 0),
+        );
+    }
+
+    private takeNextItem(): PlaybackQueueItem | undefined {
+        if (this.repeatedTrack) {
+            const item = this.repeatedTrack;
+            this.repeatedTrack = null;
+            this.currentLoopIndex = null;
+            return item;
+        }
+
+        if (!this.queueLoop) {
+            this.currentLoopIndex = null;
+            return this.queue.shift();
+        }
+
+        if (this.queueLoop.items.length === 0) return undefined;
+        if (this.queueLoop.nextIndex >= this.queueLoop.items.length) {
+            this.queueLoop.nextIndex = 0;
+        }
+
+        this.currentLoopIndex = this.queueLoop.nextIndex;
+        return this.queueLoop.items[this.queueLoop.nextIndex++];
+    }
+
+    private removeCurrentFromQueueLoop(): void {
+        if (!this.queueLoop || this.currentLoopIndex === null) return;
+
+        this.queueLoop.items.splice(this.currentLoopIndex, 1);
+        if (this.currentLoopIndex < this.queueLoop.nextIndex) {
+            this.queueLoop.nextIndex--;
+        }
+        this.currentLoopIndex = null;
+    }
+
+    private handleIdle(): void {
+        const item = this.current;
+        if (item) {
+            this.dependencies.logger.info("playback.track_ended", {
+                trackId: item.track.id,
+            });
+        }
+
+        if (
+            item &&
+            (this.loopMode === "track" || item.track.isLive) &&
+            !this.skipRequested
+        ) {
+            this.repeatedTrack = item;
+        }
+
+        this.skipRequested = false;
+        this.disposeCurrent();
+        this.scheduleAdvance();
+    }
+
+    private handlePlayerError(error: Error): void {
+        const item = this.current;
+        this.dependencies.logger.error("playback.player_failed", error, {
+            trackId: item?.track.id,
+        });
+        if (!item) return;
+
+        if (item.track.isLive && !this.skipRequested) {
+            this.repeatedTrack = item;
+        } else if (!this.skipRequested) {
+            this.removeCurrentFromQueueLoop();
+            void this.reportPlaybackError(item);
+        }
+
+        this.skipRequested = false;
+        this.disposeCurrent();
+        this.scheduleAdvance();
     }
 
     private async ensureConnection(
@@ -260,11 +432,20 @@ export class GuildPlayback {
                 "playback.voice_connection_checking",
                 { voiceChannelId: channel.id },
             );
-            await this.dependencies.voice.waitUntilReady(
-                this.connection,
-                VOICE_CONNECTION_TIMEOUT_MS,
-            );
-            return this.connection;
+            const connection = this.connection;
+            try {
+                await this.dependencies.voice.waitUntilReady(
+                    connection,
+                    VOICE_CONNECTION_TIMEOUT_MS,
+                );
+                return connection;
+            } catch (error) {
+                this.dependencies.voice.destroy(connection);
+                if (this.connection === connection) this.connection = null;
+                throw new PlaybackError("Failed to join the voice channel.", {
+                    cause: error,
+                });
+            }
         }
 
         if (this.connection) this.dependencies.voice.destroy(this.connection);
@@ -306,6 +487,9 @@ export class GuildPlayback {
         this.currentController?.abort();
         this.currentController = null;
         this.current = null;
+        this.currentLoopIndex = null;
+        this.paused = false;
+        this.started = false;
     }
 
     private async reportPlaybackError(item: PlaybackQueueItem): Promise<void> {

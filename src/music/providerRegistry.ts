@@ -35,6 +35,7 @@ function isTrending(
 export class MusicProviderRegistry implements MusicCatalog {
     private readonly providers = new Map<string, MusicProvider>();
     private readonly defaultProvider: SearchableMusicProvider;
+    private readonly searchableProviders: readonly SearchableMusicProvider[];
 
     constructor(
         providers: readonly MusicProvider[],
@@ -56,6 +57,7 @@ export class MusicProviderRegistry implements MusicCatalog {
         }
 
         this.defaultProvider = defaultProvider;
+        this.searchableProviders = providers.filter(isSearchable);
     }
 
     async resolve(
@@ -65,7 +67,7 @@ export class MusicProviderRegistry implements MusicCatalog {
         const exact = await this.resolveSupported(query, signal);
         if (exact) return exact;
 
-        const tracks = await this.defaultProvider.search(query, signal);
+        const tracks = await this.searchProviders(query, signal);
         const track = tracks[0];
         return track ? { kind: "track", track } : null;
     }
@@ -91,7 +93,7 @@ export class MusicProviderRegistry implements MusicCatalog {
     }
 
     search(query: string, signal: AbortSignal): Promise<readonly Track[]> {
-        return this.defaultProvider.search(query, signal);
+        return this.searchProviders(query, signal);
     }
 
     getTrending(signal: AbortSignal): Promise<readonly Track[]> {
@@ -110,5 +112,17 @@ export class MusicProviderRegistry implements MusicCatalog {
         }
 
         return provider.getAudioSource(track, signal);
+    }
+
+    private async searchProviders(
+        query: string,
+        signal: AbortSignal,
+    ): Promise<readonly Track[]> {
+        for (const provider of this.searchableProviders) {
+            const tracks = await provider.search(query, signal);
+            if (tracks.length > 0) return tracks;
+        }
+
+        return [];
     }
 }

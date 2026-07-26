@@ -28,6 +28,8 @@ export interface VoiceRuntime {
         player: VoicePlayerHandle,
     ): void;
     play(player: VoicePlayerHandle, sourceUrl: string, track: Track): void;
+    pause(player: VoicePlayerHandle): boolean;
+    resume(player: VoicePlayerHandle): boolean;
     stop(player: VoicePlayerHandle): boolean;
     destroy(connection: VoiceConnectionHandle): void;
 }

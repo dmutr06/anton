@@ -1,13 +1,15 @@
 import type { Client, VoiceBasedChannel } from "discord.js";
 import type { Logger } from "../lib/logger";
 import type { AudioSourceResolver } from "../music/provider";
-import type { QueueReader, QueueSnapshot } from "../music/queue";
+import type { LoopMode, QueueReader, QueueSnapshot } from "../music/queue";
 import { GuildPlayback } from "./guildPlayback";
 import {
     type EnqueueTracksRequest,
+    type PauseResult,
     type Playback,
     type PlaybackControl,
     PlaybackError,
+    type ResumeResult,
 } from "./playback";
 import type { PlaybackNotifier } from "./playbackNotifier";
 import type { VoiceRuntime } from "./voiceRuntime";
@@ -77,6 +79,36 @@ export class DiscordPlaybackManager
 
         player.assertVoiceChannel(voiceChannelId);
         player.destroy("stopped");
+        return true;
+    }
+
+    pause(guildId: string, voiceChannelId: string): PauseResult {
+        return (
+            this.players.get(guildId)?.pause(voiceChannelId) ??
+            "nothing_playing"
+        );
+    }
+
+    resume(guildId: string, voiceChannelId: string): ResumeResult {
+        return (
+            this.players.get(guildId)?.resume(voiceChannelId) ??
+            "nothing_playing"
+        );
+    }
+
+    clear(guildId: string, voiceChannelId: string): number {
+        return this.players.get(guildId)?.clear(voiceChannelId) ?? 0;
+    }
+
+    setLoopMode(
+        guildId: string,
+        voiceChannelId: string,
+        mode: LoopMode,
+    ): boolean {
+        const player = this.players.get(guildId);
+        if (!player) return false;
+
+        player.setLoopMode(voiceChannelId, mode);
         return true;
     }
 

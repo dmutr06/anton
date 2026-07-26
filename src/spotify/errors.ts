@@ -1,14 +1,7 @@
 import type { ZodError } from "zod";
 import { MusicProviderError } from "../music/provider";
 
-export class SpotifyError extends MusicProviderError {
-    constructor(message: string, options?: ErrorOptions) {
-        super(message, options);
-        this.name = "SpotifyError";
-    }
-}
-
-export class SpotifyRequestError extends SpotifyError {
+export class SpotifyRequestError extends MusicProviderError {
     constructor(
         message: string,
         readonly status: number,
@@ -19,7 +12,7 @@ export class SpotifyRequestError extends SpotifyError {
     }
 }
 
-export class SpotifyValidationError extends SpotifyError {
+export class SpotifyValidationError extends MusicProviderError {
     constructor(
         message: string,
         readonly validationError: ZodError,
