@@ -79,4 +79,18 @@ describe("YtdlpClient", () => {
             ),
         ).rejects.toBeInstanceOf(YtdlpValidationError);
     });
+
+    test("streams live audio as ADTS without video", async () => {
+        const client = new YtdlpClient({ executable: "echo" });
+        const stream = client.getLiveAudioStream(
+            entry.webpage_url,
+            new AbortController().signal,
+        );
+        let output = "";
+        for await (const chunk of stream) output += chunk.toString();
+
+        expect(output).toContain("--downloader ffmpeg");
+        expect(output).toContain("ffmpeg_o:-map 0:a:0 -vn -f adts");
+        expect(output).toContain("--output -");
+    });
 });

@@ -112,7 +112,7 @@ export class SoundCloudProvider
         }
 
         return {
-            kind: "url",
+            kind: track.source.transport ?? "url",
             url: await this.client.resolveStreamUrl(
                 track.source.resourceId,
                 signal,
@@ -160,14 +160,27 @@ export class SoundCloudProvider
             return null;
         }
 
-        const transcoding = HLS_PRESETS.map((preset) =>
-            track.media.transcodings.find(
-                (candidate) =>
-                    candidate.format.protocol === "hls" &&
-                    candidate.preset === preset &&
-                    candidate.snipped !== true,
-            ),
-        ).find((candidate) => candidate !== undefined);
+        const findTranscoding = (encrypted: boolean) =>
+            HLS_PRESETS.map((preset) =>
+                track.media.transcodings.find(
+                    (candidate) =>
+                        (encrypted
+                            ? candidate.format.protocol.endsWith(
+                                  "-encrypted-hls",
+                              )
+                            : candidate.format.protocol === "hls") &&
+                        candidate.preset === preset &&
+                        candidate.snipped !== true,
+                ),
+            ).find((candidate) => candidate !== undefined);
+        const progressive = track.media.transcodings.find(
+            (candidate) =>
+                candidate.format.protocol === "progressive" &&
+                candidate.preset === "mp3_1_0" &&
+                candidate.snipped !== true,
+        );
+        const transcoding =
+            progressive ?? findTranscoding(false) ?? findTranscoding(true);
 
         if (!transcoding) return null;
 
@@ -185,6 +198,9 @@ export class SoundCloudProvider
             source: {
                 providerId: this.id,
                 resourceId: transcoding.url,
+                ...(transcoding.format.protocol === "progressive"
+                    ? { transport: "fetch" as const }
+                    : {}),
             },
         };
     }

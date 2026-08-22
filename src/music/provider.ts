@@ -1,3 +1,4 @@
+import type { Readable } from "node:stream";
 import type { Playlist } from "./playlist";
 import type { Track } from "./track";
 
@@ -12,10 +13,9 @@ export type ResolvedMedia =
     | { kind: "track"; track: Track }
     | { kind: "playlist"; playlist: Playlist };
 
-export type AudioSource = {
-    kind: "url";
-    url: string;
-};
+export type AudioSource =
+    | { kind: "fetch" | "url"; url: string }
+    | { kind: "stream"; stream: Readable };
 
 export interface AudioSourceResolver {
     getAudioSource(track: Track, signal: AbortSignal): Promise<AudioSource>;

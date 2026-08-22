@@ -1,3 +1,4 @@
+import { Readable } from "node:stream";
 import { YtdlpProcessError, YtdlpValidationError } from "./errors";
 import {
     type YtdlpEntry,
@@ -21,6 +22,7 @@ export interface YtdlpCatalogClient {
     search(query: string, signal: AbortSignal): Promise<readonly YtdlpEntry[]>;
     resolve(url: string, signal: AbortSignal): Promise<YtdlpEntry | null>;
     getStreamUrl(url: string, signal: AbortSignal): Promise<string>;
+    getLiveAudioStream(url: string, signal: AbortSignal): Readable;
 }
 
 export class YtdlpClient implements YtdlpCatalogClient {
@@ -115,6 +117,29 @@ export class YtdlpClient implements YtdlpCatalogClient {
         }
     }
 
+    getLiveAudioStream(url: string, signal: AbortSignal): Readable {
+        return streamYtdlp(
+            this.config.executable,
+            [
+                "--format",
+                "bestaudio/best",
+                "--downloader",
+                "ffmpeg",
+                "--downloader-args",
+                "ffmpeg_o:-map 0:a:0 -vn -f adts",
+                "--output",
+                "-",
+                "--quiet",
+                ...COMMON_ARGS,
+                "--no-playlist",
+                "--extractor-args",
+                EXTRACTOR_ARGS,
+                url,
+            ],
+            signal,
+        );
+    }
+
     private parseJson(output: string): unknown {
         try {
             return JSON.parse(output);
@@ -124,6 +149,56 @@ export class YtdlpClient implements YtdlpCatalogClient {
             });
         }
     }
+}
+
+function streamYtdlp(
+    executable: string,
+    args: readonly string[],
+    signal: AbortSignal,
+): Readable {
+    signal.throwIfAborted();
+
+    let process: ReturnType<typeof Bun.spawn>;
+    try {
+        process = Bun.spawn([executable, ...args], {
+            signal,
+            stdout: "pipe",
+            stderr: "pipe",
+        });
+    } catch {
+        throw new YtdlpProcessError("Failed to start yt-dlp", undefined);
+    }
+
+    if (
+        !(process.stdout instanceof ReadableStream) ||
+        !(process.stderr instanceof ReadableStream)
+    ) {
+        throw new YtdlpProcessError("yt-dlp output is unavailable");
+    }
+
+    const stream = Readable.fromWeb(process.stdout);
+    void Promise.all([process.exited, new Response(process.stderr).text()])
+        .then(([exitCode, stderr]) => {
+            if (exitCode === 0 || signal.aborted || stream.destroyed) return;
+
+            const details = stderr.trim();
+            stream.destroy(
+                new YtdlpProcessError(
+                    details ? `yt-dlp failed: ${details}` : "yt-dlp failed",
+                    exitCode,
+                ),
+            );
+        })
+        .catch((error: unknown) => {
+            if (signal.aborted || stream.destroyed) return;
+            stream.destroy(
+                error instanceof Error
+                    ? error
+                    : new YtdlpProcessError("yt-dlp failed"),
+            );
+        });
+
+    return stream;
 }
 
 async function runYtdlp(

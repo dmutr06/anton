@@ -1,3 +1,4 @@
+import { Readable } from "node:stream";
 import {
     type AudioPlayer,
     AudioPlayerStatus,
@@ -10,17 +11,20 @@ import {
     VoiceConnectionStatus,
 } from "@discordjs/voice";
 import type { VoiceBasedChannel } from "discord.js";
+import type { AudioSource } from "../music/provider";
 import type { Track } from "../music/track";
-import type {
-    VoiceConnectionEvents,
-    VoiceConnectionHandle,
-    VoicePlayerEvents,
-    VoicePlayerHandle,
-    VoiceRuntime,
+import {
+    EmptyAudioStreamError,
+    type VoiceConnectionEvents,
+    type VoiceConnectionHandle,
+    type VoicePlayerEvents,
+    type VoicePlayerHandle,
+    type VoiceRuntime,
 } from "./voiceRuntime";
 
 type DiscordPlayerHandle = {
     player: AudioPlayer;
+    intentionalStop: boolean;
 };
 
 type DiscordConnectionHandle = {
@@ -32,15 +36,36 @@ export class DiscordVoiceRuntime implements VoiceRuntime {
         const player = createAudioPlayer({
             behaviors: {
                 noSubscriber: NoSubscriberBehavior.Stop,
+                maxMissedFrames: 50,
             },
         });
+        const handle: DiscordPlayerHandle = {
+            player,
+            intentionalStop: false,
+        };
+        const failedResources = new WeakSet<object>();
 
         player.on(AudioPlayerStatus.Idle, (oldState) => {
-            if (oldState.status !== AudioPlayerStatus.Idle) events.idle();
+            if (oldState.status === AudioPlayerStatus.Idle) return;
+            if (failedResources.delete(oldState.resource)) return;
+            if (handle.intentionalStop) {
+                handle.intentionalStop = false;
+                events.idle();
+                return;
+            }
+            if (oldState.resource.playbackDuration === 0) {
+                events.error(new EmptyAudioStreamError());
+                return;
+            }
+            events.idle();
         });
-        player.on("error", events.error);
+        player.on(AudioPlayerStatus.Playing, () => events.playing());
+        player.on("error", (error) => {
+            failedResources.add(error.resource);
+            events.error(error);
+        });
 
-        return { player } satisfies DiscordPlayerHandle;
+        return handle;
     }
 
     connect(
@@ -55,6 +80,24 @@ export class DiscordVoiceRuntime implements VoiceRuntime {
             selfMute: false,
         });
         connection.on("error", events.error);
+        connection.on(VoiceConnectionStatus.Disconnected, async () => {
+            try {
+                await Promise.race([
+                    entersState(
+                        connection,
+                        VoiceConnectionStatus.Signalling,
+                        5_000,
+                    ),
+                    entersState(
+                        connection,
+                        VoiceConnectionStatus.Connecting,
+                        5_000,
+                    ),
+                ]);
+            } catch {
+                events.disconnected();
+            }
+        });
 
         return { connection } satisfies DiscordConnectionHandle;
     }
@@ -77,8 +120,29 @@ export class DiscordVoiceRuntime implements VoiceRuntime {
         this.connection(connection).subscribe(this.player(player));
     }
 
-    play(player: VoicePlayerHandle, sourceUrl: string, track: Track): void {
-        const resource = createAudioResource(sourceUrl, { metadata: track });
+    async play(
+        player: VoicePlayerHandle,
+        source: AudioSource,
+        track: Track,
+        signal: AbortSignal,
+    ): Promise<void> {
+        let input: string | Readable;
+
+        if (source.kind === "stream") {
+            input = source.stream;
+        } else if (source.kind === "fetch") {
+            const response = await fetch(source.url, { signal });
+            if (!response.ok || !response.body) {
+                throw new Error(
+                    `Audio stream request failed (${response.status} ${response.statusText})`,
+                );
+            }
+            input = Readable.fromWeb(response.body);
+        } else {
+            input = source.url;
+        }
+
+        const resource = createAudioResource(input, { metadata: track });
         this.player(player).play(resource);
     }
 
@@ -91,7 +155,11 @@ export class DiscordVoiceRuntime implements VoiceRuntime {
     }
 
     stop(player: VoicePlayerHandle): boolean {
-        return this.player(player).stop(true);
+        const handle = player as DiscordPlayerHandle;
+        handle.intentionalStop = true;
+        const stopped = handle.player.stop(true);
+        if (!stopped) handle.intentionalStop = false;
+        return stopped;
     }
 
     destroy(connection: VoiceConnectionHandle): void {

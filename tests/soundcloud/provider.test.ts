@@ -157,7 +157,7 @@ describe("SoundCloudProvider", () => {
         );
     });
 
-    test("uses HLS MP3 when AAC is unavailable", async () => {
+    test("prefers full progressive MP3 over HLS", async () => {
         const fetcher: SoundCloudFetch = async () =>
             Response.json({
                 ...rawTrack,
@@ -187,8 +187,69 @@ describe("SoundCloudProvider", () => {
             new AbortController().signal,
         );
 
+        expect(resolved?.source).toEqual({
+            providerId: "soundcloud",
+            resourceId: "https://api-v2.soundcloud.com/media/123/progressive",
+            transport: "fetch",
+        });
+    });
+
+    test("uses encrypted HLS streams", async () => {
+        const fetcher: SoundCloudFetch = async () =>
+            Response.json({
+                ...rawTrack,
+                media: {
+                    transcodings: [
+                        {
+                            url: "https://api-v2.soundcloud.com/media/123/encrypted-hls",
+                            preset: "aac_160k",
+                            snipped: false,
+                            format: { protocol: "ctr-encrypted-hls" },
+                        },
+                    ],
+                },
+            });
+        const provider = new SoundCloudProvider(
+            new SoundCloudClient({ clientId: "client-id" }, fetcher),
+        );
+
+        const resolved = await provider.resolveIdentifier(
+            "soundcloud:tracks:123",
+            new AbortController().signal,
+        );
+
         expect(resolved?.source.resourceId).toBe(
-            "https://api-v2.soundcloud.com/media/123/hls-mp3",
+            "https://api-v2.soundcloud.com/media/123/encrypted-hls",
+        );
+    });
+
+    test("uses encrypted HLS only when plain HLS is unavailable", async () => {
+        const fetcher: SoundCloudFetch = async () =>
+            Response.json({
+                ...rawTrack,
+                media: {
+                    transcodings: [
+                        {
+                            url: "https://api-v2.soundcloud.com/media/123/encrypted-hls",
+                            preset: "aac_160k",
+                            snipped: false,
+                            format: { protocol: "ctr-encrypted-hls" },
+                        },
+                        rawTrack.media.transcodings[0],
+                    ],
+                },
+            });
+        const provider = new SoundCloudProvider(
+            new SoundCloudClient({ clientId: "client-id" }, fetcher),
+        );
+
+        const resolved = await provider.resolveIdentifier(
+            "soundcloud:tracks:123",
+            new AbortController().signal,
+        );
+
+        expect(resolved?.source.resourceId).toBe(
+            "https://api-v2.soundcloud.com/media/123/aac-96",
         );
     });
 

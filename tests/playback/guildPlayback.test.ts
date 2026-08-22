@@ -15,6 +15,7 @@ import type {
     VoicePlayerHandle,
     VoiceRuntime,
 } from "../../src/playback/voiceRuntime";
+import { EmptyAudioStreamError } from "../../src/playback/voiceRuntime";
 
 const logger: Logger = {
     debug: () => {},
@@ -45,6 +46,7 @@ class TestVoiceRuntime implements VoiceRuntime {
     readonly player = {};
     readonly connections: object[] = [];
     readonly destroyedConnections: object[] = [];
+    readonly connectionEvents: VoiceConnectionEvents[] = [];
     paused = false;
     waitFailures = 0;
     private playerEvents: VoicePlayerEvents | null = null;
@@ -56,10 +58,11 @@ class TestVoiceRuntime implements VoiceRuntime {
 
     connect(
         _channel: VoiceBasedChannel,
-        _events: VoiceConnectionEvents,
+        events: VoiceConnectionEvents,
     ): VoiceConnectionHandle {
         const connection = {};
         this.connections.push(connection);
+        this.connectionEvents.push(events);
         return connection;
     }
 
@@ -72,8 +75,13 @@ class TestVoiceRuntime implements VoiceRuntime {
 
     subscribe(): void {}
 
-    play(_player: VoicePlayerHandle, _sourceUrl: string, track: Track): void {
+    async play(
+        _player: VoicePlayerHandle,
+        _source: import("../../src/music/provider").AudioSource,
+        track: Track,
+    ): Promise<void> {
         this.played.push(track);
+        this.playerEvents?.playing();
     }
 
     pause(): boolean {
@@ -103,6 +111,10 @@ class TestVoiceRuntime implements VoiceRuntime {
 
     emitError(error = new Error("Player failed")): void {
         this.playerEvents?.error(error);
+    }
+
+    emitDisconnected(): void {
+        this.connectionEvents.at(-1)?.disconnected();
     }
 }
 
@@ -146,15 +158,17 @@ function createPlayback(
 ): {
     playback: GuildPlayback;
     voice: TestVoiceRuntime;
+    notifier: TestNotifier;
     destroyed: { value: boolean };
 } {
     const voice = new TestVoiceRuntime();
+    const notifier = new TestNotifier();
     const destroyed = { value: false };
     const playback = new GuildPlayback({
         guildId: "guild",
         sources: sourceResolver,
         voice,
-        notifier: new TestNotifier(),
+        notifier,
         logger,
         maxQueueTracks,
         onDestroy: () => {
@@ -162,7 +176,7 @@ function createPlayback(
         },
     });
 
-    return { playback, voice, destroyed };
+    return { playback, voice, notifier, destroyed };
 }
 
 describe("GuildPlayback", () => {
@@ -435,6 +449,23 @@ describe("GuildPlayback", () => {
         ]);
     });
 
+    test("reports an empty live stream without retrying forever", async () => {
+        const { playback, voice, notifier, destroyed } = createPlayback(10);
+
+        playback.enqueue([createItem(1, true)]);
+        await settle();
+        voice.emitError(new EmptyAudioStreamError());
+        await settle();
+
+        expect(voice.played.map((track) => track.id)).toEqual([
+            "test:tracks:1",
+        ]);
+        expect(notifier.failed.map((track) => track.id)).toEqual([
+            "test:tracks:1",
+        ]);
+        expect(destroyed.value).toBe(true);
+    });
+
     test("skips failed non-live tracks in a queue loop", async () => {
         const { playback, voice } = createPlayback(10);
 
@@ -472,6 +503,21 @@ describe("GuildPlayback", () => {
             "test:tracks:3",
         ]);
         expect(voice.connections).toHaveLength(2);
+        expect(voice.destroyedConnections).toHaveLength(1);
+    });
+
+    test("destroys and reports after an unrecoverable voice disconnect", async () => {
+        const { playback, voice, notifier, destroyed } = createPlayback(10);
+
+        playback.enqueue([createItem(1)]);
+        await settle();
+        voice.emitDisconnected();
+        await settle();
+
+        expect(destroyed.value).toBe(true);
+        expect(notifier.failed.map((track) => track.id)).toEqual([
+            "test:tracks:1",
+        ]);
         expect(voice.destroyedConnections).toHaveLength(1);
     });
 

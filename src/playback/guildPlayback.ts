@@ -10,6 +10,7 @@ import type {
     VoicePlayerHandle,
     VoiceRuntime,
 } from "./voiceRuntime";
+import { EmptyAudioStreamError } from "./voiceRuntime";
 
 const VOICE_CONNECTION_TIMEOUT_MS = 15_000;
 
@@ -58,6 +59,7 @@ export class GuildPlayback {
         });
         this.player = dependencies.voice.createPlayer({
             idle: () => this.handleIdle(),
+            playing: () => this.handlePlaying(),
             error: (error) => this.handlePlayerError(error),
         });
     }
@@ -309,17 +311,12 @@ export class GuildPlayback {
                     controller.signal.throwIfAborted();
 
                     this.dependencies.voice.subscribe(connection, this.player);
-                    this.dependencies.voice.play(
+                    await this.dependencies.voice.play(
                         this.player,
-                        source.url,
+                        source,
                         item.track,
+                        controller.signal,
                     );
-                    this.started = true;
-                    if (this.paused) this.dependencies.voice.pause(this.player);
-                    this.dependencies.logger.info("playback.track_started", {
-                        provider: item.track.provider,
-                        trackId: item.track.id,
-                    });
                 } catch (error) {
                     if (!controller.signal.aborted) {
                         this.dependencies.logger.error(
@@ -405,6 +402,18 @@ export class GuildPlayback {
         this.scheduleAdvance();
     }
 
+    private handlePlaying(): void {
+        const item = this.current;
+        if (!item || this.started) return;
+
+        this.started = true;
+        if (this.paused) this.dependencies.voice.pause(this.player);
+        this.dependencies.logger.info("playback.track_started", {
+            provider: item.track.provider,
+            trackId: item.track.id,
+        });
+    }
+
     private handlePlayerError(error: Error): void {
         const item = this.current;
         this.dependencies.logger.error("playback.player_failed", error, {
@@ -412,7 +421,11 @@ export class GuildPlayback {
         });
         if (!item) return;
 
-        if (item.track.isLive && !this.skipRequested) {
+        if (
+            item.track.isLive &&
+            !this.skipRequested &&
+            !(error instanceof EmptyAudioStreamError)
+        ) {
             this.repeatedTrack = item;
         } else if (!this.skipRequested) {
             this.removeCurrentFromQueueLoop();
@@ -453,7 +466,18 @@ export class GuildPlayback {
         this.dependencies.logger.info("playback.voice_connecting", {
             voiceChannelId: channel.id,
         });
-        const connection = this.dependencies.voice.connect(channel, {
+        let connection: VoiceConnectionHandle;
+        connection = this.dependencies.voice.connect(channel, {
+            disconnected: () => {
+                if (this.connection !== connection || this.destroyed) return;
+
+                this.dependencies.logger.warn("playback.voice_disconnected", {
+                    voiceChannelId: channel.id,
+                });
+                const item = this.current;
+                if (item) void this.reportPlaybackError(item);
+                this.destroy("failed");
+            },
             error: (error) => {
                 this.dependencies.logger.error(
                     "playback.voice_connection_failed",

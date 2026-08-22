@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { Readable } from "node:stream";
 import type { YtdlpCatalogClient } from "../../src/ytdlp/client";
 import { YtdlpProvider } from "../../src/ytdlp/provider";
 
@@ -14,16 +15,22 @@ const entry = {
 };
 
 class TestClient implements YtdlpCatalogClient {
+    constructor(private readonly resolvedEntry = entry) {}
+
     async search() {
-        return [entry];
+        return [this.resolvedEntry];
     }
 
     async resolve() {
-        return entry;
+        return this.resolvedEntry;
     }
 
     async getStreamUrl(url: string): Promise<string> {
         return `https://media.youtube.test/${encodeURIComponent(url)}`;
+    }
+
+    getLiveAudioStream(): Readable {
+        return Readable.from(["audio"]);
     }
 }
 
@@ -65,7 +72,7 @@ describe("YtdlpProvider", () => {
         expect(resolved?.kind).toBe("track");
     });
 
-    test("resolves a fresh stream URL for a mapped track", async () => {
+    test("streams live tracks through yt-dlp", async () => {
         const provider = new YtdlpProvider(new TestClient());
         const track = (await provider.resolveUrl(
             entry.webpage_url,
@@ -77,7 +84,31 @@ describe("YtdlpProvider", () => {
             new AbortController().signal,
         );
 
-        expect(source.kind).toBe("url");
-        expect(source.url).toContain("media.youtube.test");
+        expect(source.kind).toBe("stream");
+    });
+
+    test("resolves a fresh stream URL for a video-on-demand track", async () => {
+        const provider = new YtdlpProvider(
+            new TestClient({
+                ...entry,
+                is_live: false,
+                live_status: "not_live",
+            }),
+        );
+        const resolved = await provider.resolveUrl(
+            entry.webpage_url,
+            new AbortController().signal,
+        );
+        if (!resolved || resolved.kind !== "track") throw new Error("No track");
+
+        const source = await provider.getAudioSource(
+            resolved.track,
+            new AbortController().signal,
+        );
+
+        expect(source).toMatchObject({
+            kind: "fetch",
+            url: expect.stringContaining("media.youtube.test"),
+        });
     });
 });

@@ -19,5 +19,6 @@ export type Track = {
     source: {
         providerId: string;
         resourceId: string;
+        transport?: "fetch";
     };
 };

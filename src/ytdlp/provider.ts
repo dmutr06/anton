@@ -69,13 +69,21 @@ export class YtdlpProvider implements MusicProvider, SearchableMusicProvider {
             );
         }
 
-        return {
-            kind: "url",
-            url: await this.client.getStreamUrl(
-                track.source.resourceId,
-                signal,
-            ),
-        };
+        return track.isLive
+            ? {
+                  kind: "stream",
+                  stream: this.client.getLiveAudioStream(
+                      track.source.resourceId,
+                      signal,
+                  ),
+              }
+            : {
+                  kind: "fetch",
+                  url: await this.client.getStreamUrl(
+                      track.source.resourceId,
+                      signal,
+                  ),
+              };
     }
 
     private toTrack(entry: YtdlpEntry, fallbackUrl?: string): Track | null {
